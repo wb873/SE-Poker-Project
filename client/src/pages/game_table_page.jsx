@@ -21,13 +21,13 @@ const seat_positions = [
 ];
 
 const mock_seats = [
-  { name: "chrism", status: "Waiting" },
+  { name: "chris", status: "Waiting" },
   { name: "Bot 1", status: "Waiting" },
-  { name: "will_b", status: "Waiting" },
+  { name: "will", status: "Waiting" },
   { name: "YOU", status: "You" },
   { name: "Bot 2", status: "Waiting" },
-  { name: "Jason", status: "Waiting" },
-  { name: "mrpoker", status: "Waiting" },
+  { name: "brendan", status: "Waiting" },
+  { name: "aidan", status: "Waiting" },
 ];
 
 export default function GameTablePage() {

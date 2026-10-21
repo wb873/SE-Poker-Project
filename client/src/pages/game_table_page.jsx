@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import PlayingCard from "../components/playing_card.jsx";
+import { io } from "socket.io-client";
+import { use_session } from "../session.jsx";
 
 const API_URL =
   import.meta.env.VITE_API_URL || "http://localhost:5000";
@@ -33,6 +35,9 @@ export default function GameTablePage() {
   const navigate = useNavigate();
   const [search_params] = useSearchParams();
   const is_spectator = search_params.get("spectate") === "1";
+  const { lobby_id } = useParams();
+  const { player } = use_session();
+  const socket_ref = React.useRef(null);
 
   const [game, set_game] = useState(null);
   const [loading, set_loading] = useState(false);
@@ -201,16 +206,33 @@ export default function GameTablePage() {
     }
   }, [seconds_left, game?.phase, loading, is_spectator]);
 
+  // Connect to this table's chat room (F5)
+  useEffect(() => {
+    const socket = io(API_URL);
+    socket_ref.current = socket;
+
+    // Join on every connect, so a dropped connection rejoins the room
+    socket.on("connect", () => {
+      socket.emit("chat:join", { lobbyId: lobby_id, username: player.username });
+    });
+
+    socket.on("chat:message", (message) => {
+      set_chat_log((previous) => [...previous, { user: message.user, text: message.text }]);
+    });
+
+    socket.on("chat:error", (message) => {
+      set_chat_log((previous) => [...previous, { user: "System", text: message }]);
+    });
+
+    return () => socket.disconnect();
+  }, [lobby_id, player.username]);
+
   function handle_send_chat(event) {
     event.preventDefault();
 
     if (!chat_input.trim()) return;
 
-    set_chat_log((previous) => [
-      ...previous,
-      { user: "You", text: chat_input.trim() },
-    ]);
-
+    socket_ref.current?.emit("chat:send", { text: chat_input });
     set_chat_input("");
   }
 

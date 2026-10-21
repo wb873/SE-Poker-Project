@@ -10,6 +10,14 @@ import GameTablePage from "./pages/game_table_page.jsx";
 import ProfilePage from "./pages/profile_page.jsx";
 import FriendsPage from "./pages/friends_page.jsx";
 import DisclaimerBanner from "./components/disclaimer_banner.jsx";
+import AdminPage from "./pages/admin_page.jsx";
+
+// UI guard only. The future admin API must also verify permissions on the server.
+function RequireAdmin({ children }) {
+  const { player } = use_session();
+  if (!player) return <Navigate to="/" replace />;
+  return player.is_admin ? children : <Navigate to="/menu" replace />;
+}
 
 // Redirects to the login screen when nobody is signed in (guests count as signed in)
 function RequireSession({ children }) {
@@ -30,6 +38,7 @@ export default function App() {
     <>
       <Routes>
         <Route path="/" element={<LoginPage />} />
+        <Route path="/admin" element={<RequireAdmin><AdminPage /></RequireAdmin>} />
         <Route path="/menu" element={<RequireSession><MainMenuPage /></RequireSession>} />
         <Route path="/lobbies" element={<RequireSession><LobbyBrowserPage /></RequireSession>} />
         <Route path="/lobbies/new" element={<RequireSession><CreateLobbyPage /></RequireSession>} />

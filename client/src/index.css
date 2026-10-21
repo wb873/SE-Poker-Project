@@ -216,7 +216,14 @@ a { color: var(--primary); }
   padding: 10px 14px; border-radius: 10px; font-size: 13px; margin-top: 20px;
 }
 
+.admin_section { margin-top: 20px; }
+.admin_columns { display: grid; grid-template-columns: 240px minmax(0, 1fr); gap: 20px; }
+.admin_message { text-align: left; overflow-wrap: anywhere; }
+.admin_text { white-space: pre-wrap; overflow-wrap: anywhere; }
+.admin_user { flex-wrap: wrap; }
+
 @media (max-width: 800px) {
+  .admin_columns { grid-template-columns: 1fr; }
   .menu_layout, .table_controls { grid-template-columns: 1fr; }
   .filters { grid-template-columns: 1fr 1fr; }
   .stat_grid { grid-template-columns: 1fr 1fr; }

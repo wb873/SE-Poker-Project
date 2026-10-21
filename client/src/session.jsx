@@ -19,9 +19,12 @@ export function SessionProvider({ children }) {
     set_balance(1000);
   }
 
-  function admin_login() {
+  // Demo only. Replace with server authentication once the user API is ready.
+  function admin_login(username, password) {
+    if (username !== "admin" || password !== "admin123") return false;
     set_player({ username: "Admin", is_guest: false, is_admin: true });
     set_balance(0);
+    return true;
   }
 
   function logout() {

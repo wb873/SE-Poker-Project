@@ -6,7 +6,7 @@ import { use_session } from "../session.jsx";
 export default function LoginPage() {
   const navigate = useNavigate();
   const { login, play_as_guest, admin_login } = use_session();
-  const [mode, set_mode] = useState("login"); // login | register | reset
+  const [mode, set_mode] = useState("login"); // login | register | reset | admin
   const [identifier, set_identifier] = useState("");
   const [password, set_password] = useState("");
   const [confirm_password, set_confirm_password] = useState("");
@@ -32,6 +32,14 @@ export default function LoginPage() {
       set_message("Passwords do not match.");
       return;
     }
+    if (mode === "admin") {
+      if (!admin_login(identifier.trim(), password)) {
+        set_message("Incorrect demo admin username or password.");
+        return;
+      }
+      navigate("/admin");
+      return;
+    }
     // TODO: replace with POST /api/auth/login or /api/auth/register
     login(identifier.trim());
     navigate("/menu");
@@ -43,12 +51,13 @@ export default function LoginPage() {
   }
 
   function handle_admin() {
-    // TODO: real admin authentication (story A1)
-    admin_login();
-    navigate("/menu");
+    set_mode("admin");
+    set_identifier("");
+    set_password("");
+    set_message("");
   }
 
-  const title = { login: "Log In", register: "Create Account", reset: "Reset Password" }[mode];
+  const title = { login: "Log In", register: "Create Account", reset: "Reset Password", admin: "Admin Log In" }[mode];
 
   return (
     <div className="login_wrap">
@@ -58,8 +67,10 @@ export default function LoginPage() {
 
       <form className="login_form" onSubmit={handle_submit}>
         <h2 style={{ textAlign: "center" }}>{title}</h2>
+        {mode === "admin" && <p className="muted">Demo access: username <b>admin</b>, password <b>admin123</b>. Account authentication is not connected yet.</p>}
         <input
           className="input"
+          aria-label={mode === "admin" ? "Admin username" : "Username or email"}
           placeholder={mode === "register" || mode === "reset" ? "Email" : "Username / E-Mail"}
           value={identifier}
           onChange={(e) => set_identifier(e.target.value)}

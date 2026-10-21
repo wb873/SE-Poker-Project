@@ -4,8 +4,13 @@ const cors = require("cors");
 const gameRoutes = require("./routes/game_routes");
 const lobbyRoutes = require("./routes/lobby_routes");
 const db = require("./model/DbConnection");
+const http = require("http");
+const { Server } = require("socket.io");
+const ChatController = require("./controller/ChatController");
 
 const app = express();
+const server = http.createServer(app);
+const io = new Server(server, { cors: { origin: "*" } });
 const PORT = process.env.PORT || 5000;
 
 if (process.env.DB_URI || process.env.CI) {
@@ -24,7 +29,16 @@ app.get("/api/health", (req, res) => {
 app.use("/api/game", gameRoutes);
 app.use("/api/lobbies", lobbyRoutes);
 
-app.listen(PORT, () => {
+io.on("connection", (socket) => {
+  console.log(`Socket connected: ${socket.id}`);
+  ChatController.registerChatHandlers(io, socket);
+
+  socket.on("disconnect", () => {
+    console.log(`Socket disconnected: ${socket.id}`);
+  });
+});
+
+server.listen(PORT, () => {
   console.log(`Poker API running at http://localhost:${PORT}`);
   console.log(`Health check: http://localhost:${PORT}/api/health`);
 });

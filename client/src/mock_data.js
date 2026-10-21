@@ -29,10 +29,10 @@ export const mock_stats = {
 };
 
 export const mock_leaderboard = [
-  { rank: 1, username: "pokerbeast", balance: 4820000, hands_won: 912 },
-  { rank: 2, username: "chrism", balance: 2210500, hands_won: 640 },
-  { rank: 3, username: "will_b", balance: 1750000, hands_won: 588 },
-  { rank: 4, username: "Jason", balance: 930250, hands_won: 301 },
+  { rank: 1, username: "brendan", balance: 4820000, hands_won: 912 },
+  { rank: 2, username: "chris", balance: 2210500, hands_won: 640 },
+  { rank: 3, username: "will", balance: 1750000, hands_won: 588 },
+  { rank: 4, username: "aidan", balance: 930250, hands_won: 301 },
   { rank: 5, username: "bro", balance: 410000, hands_won: 188 },
 ];
 

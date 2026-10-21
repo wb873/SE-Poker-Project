@@ -2,9 +2,18 @@ import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import PageHeader from "../components/page_header.jsx";
 
+import { use_session } from "../session.jsx";
+
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
+
 // Create lobby form (stories L1, L4, L5, L6)
 export default function CreateLobbyPage() {
   const navigate = useNavigate();
+
+  const { player } = use_session();
+  const [error, set_error] = useState("");
+  const [saving, set_saving] = useState(false);
+
   const [form, set_form] = useState({
     name: "",
     visibility: "public",
@@ -23,11 +32,37 @@ export default function CreateLobbyPage() {
     set_form((previous) => ({ ...previous, [field_name]: value }));
   }
 
-  function handle_create(event) {
-    event.preventDefault();
-    // TODO: POST /api/lobbies, then navigate to the returned lobby id
-    navigate("/table/new");
+  async function handle_create(event) {
+  event.preventDefault();
+  set_error("");
+  set_saving(true);
+  try {
+    const response = await fetch(`${API_URL}/api/lobbies`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: form.name,
+        host: player.username,
+        visibility: form.visibility,
+        password: form.password,
+        maxPlayers: form.max_players,
+        ante: form.ante,
+        turnTimer: form.turn_timer,
+        sideBets: form.side_bets,
+        botsEnabled: form.bots_enabled,
+        botAmount: form.bot_amount,
+        botDifficulty: form.bot_difficulty,
+      }),
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || "Could not create lobby.");
+    navigate(`/table/${data.lobby.id}`);
+  } catch (err) {
+    set_error(err.message);
+  } finally {
+    set_saving(false);
   }
+}
 
   return (
     <div className="page">
@@ -88,9 +123,9 @@ export default function CreateLobbyPage() {
         <label className="toggle_row">
           <input type="checkbox" checked={form.side_bets} onChange={(e) => update_field("side_bets", e.target.checked)} /> Allow Side Bets
         </label>
-
+        {error && <div className="error_text">{error}</div>}
         <div className="row">
-          <button className="btn primary" type="submit" style={{ padding: "14px 28px" }}>Create Lobby</button>
+          <button className="btn primary" type="submit" disabled={saving} style={{ padding: "14px 28px" }}>{saving ? "Creating..." : "Create Lobby"}</button>          
           <button type="button" className="btn" onClick={() => alert("Invite friends (coming soon)")}>Invite Friends</button>
           <span className="spacer" />
           <button type="button" className="btn danger" onClick={() => navigate("/menu")}>Cancel</button>

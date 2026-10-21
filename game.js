@@ -1,4 +1,3 @@
-
 const { randomUUID } = require("crypto");
 
 const games = new Map();
@@ -191,6 +190,10 @@ function startHand(game) {
   game.dealerHand = deck.splice(0, 5);
   game.dealerUpCard = game.dealerHand[0];
 
+  // Keep the undealt cards so a swapped card is drawn from the real deck.
+  game.deck = deck;
+  game.swapUsed = false;
+
   game.raiseAmount = game.ante * 2;
   game.phase = "decision";
   game.result = null;
@@ -212,6 +215,9 @@ function createGame(ante = DEFAULT_ANTE) {
     balance: STARTING_BALANCE,
     ante,
     raiseAmount: ante * 2,
+    swapCost: ante * 2,
+    swapUsed: false,
+    deck: [],
     phase: "waiting",
     playerHand: [],
     dealerHand: [],
@@ -241,6 +247,13 @@ function getPublicState(game) {
     balance: game.balance,
     ante: game.ante,
     raiseAmount: game.raiseAmount,
+    swapCost: game.swapCost,
+    swapUsed: game.swapUsed,
+    // A swap needs enough chips left over to still afford the raise.
+    canSwap:
+      game.phase === "decision" &&
+      !game.swapUsed &&
+      game.balance >= game.swapCost + game.raiseAmount,
     phase: game.phase,
     playerHand: game.playerHand.map(({ rank, suit }) => ({ rank, suit })),
     dealerUpCard: game.dealerUpCard
@@ -258,16 +271,54 @@ function getPublicState(game) {
   };
 }
 
-function applyAction(game, action) {
+// Custom rule (not in standard Caribbean Stud): once per hand, before raising
+// or folding, the player may pay swapCost (2x ante) to replace one card.
+function swapCard(game, cardIndex) {
+  if (game.swapUsed) {
+    throw new Error("You already swapped a card this hand.");
+  }
+
+  if (!Number.isInteger(cardIndex) || cardIndex < 0 || cardIndex > 4) {
+    throw new Error("Choose which card (0-4) to swap.");
+  }
+
+  if (game.balance < game.swapCost + game.raiseAmount) {
+    throw new Error("Not enough chips to swap and still raise.");
+  }
+
+  if (game.deck.length === 0) {
+    throw new Error("No cards left to swap.");
+  }
+
+  const old_card = game.playerHand[cardIndex];
+  const new_card = game.deck.shift();
+
+  game.balance -= game.swapCost;
+  game.playerHand[cardIndex] = new_card;
+  game.swapUsed = true;
+  game.message =
+    `You paid $${game.swapCost} and swapped ${cardLabel(old_card)} ` +
+    `for ${cardLabel(new_card)}. Choose Raise or Fold.`;
+
+  return getPublicState(game);
+}
+
+function applyAction(game, action, options = {}) {
   if (!game) throw new Error("Game not found.");
   if (game.phase !== "decision") {
     throw new Error("This hand is not accepting actions.");
   }
 
+  if (action === "swap") {
+    return swapCard(game, options.cardIndex);
+  }
+
   if (action === "fold") {
     game.phase = "done";
     game.result = "fold";
-    game.message = "You folded and lost your ante.";
+    game.message = game.swapUsed
+      ? "You folded and lost your ante and your swap fee."
+      : "You folded and lost your ante.";
     game.playerHandRank = evaluateHand(game.playerHand).rank;
     game.dealerHandRank = null;
 
@@ -275,7 +326,7 @@ function applyAction(game, action) {
   }
 
   if (action !== "raise") {
-    throw new Error("Choose either fold or raise.");
+    throw new Error("Choose fold, raise or swap.");
   }
 
   if (game.balance < game.raiseAmount) {

@@ -1,4 +1,3 @@
-
 const express = require("express");
 
 const {
@@ -55,11 +54,12 @@ router.get("/current", (req, res) => {
   });
 });
 
-// Player submits "fold" or "raise".
+// Player submits "fold", "raise" or "swap".
 // POST /api/game/current/action
 // Body: { "gameId": "...", "action": "raise" }
+//       { "gameId": "...", "action": "swap", "cardIndex": 0 }
 router.post("/current/action", (req, res) => {
-  const { gameId, action } = req.body ?? {};
+  const { gameId, action, cardIndex } = req.body ?? {};
   const game = getGame(gameId);
 
   if (!game) {
@@ -70,7 +70,7 @@ router.post("/current/action", (req, res) => {
   }
 
   try {
-    const updatedGame = applyAction(game, action);
+    const updatedGame = applyAction(game, action, { cardIndex });
 
     res.json({
       success: true,

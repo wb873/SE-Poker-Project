@@ -1,9 +1,6 @@
-
 import React, { useEffect, useState } from "react";
-import { useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import PlayingCard from "../components/playing_card.jsx";
-import { io } from "socket.io-client";
-import { use_session } from "../session.jsx";
 
 const API_URL =
   import.meta.env.VITE_API_URL || "http://localhost:5000";
@@ -36,14 +33,13 @@ export default function GameTablePage() {
   const navigate = useNavigate();
   const [search_params] = useSearchParams();
   const is_spectator = search_params.get("spectate") === "1";
-  const { lobby_id } = useParams();
-  const { player } = use_session();
-  const socket_ref = React.useRef(null);
 
   const [game, set_game] = useState(null);
   const [loading, set_loading] = useState(false);
   const [error, set_error] = useState("");
   const [seconds_left, set_seconds_left] = useState(turn_seconds);
+  // When true, clicking one of your cards swaps it (costs 2x ante, once per hand).
+  const [swap_mode, set_swap_mode] = useState(false);
 
   const [chat_input, set_chat_input] = useState("");
   const [chat_log, set_chat_log] = useState([
@@ -78,7 +74,7 @@ export default function GameTablePage() {
   }
 
   // Send an action to the backend. The backend calculates the result.
-  async function send_action(action) {
+  async function send_action(action, extra = {}) {
     if (!game?.gameId || loading || is_spectator) return;
 
     set_loading(true);
@@ -93,6 +89,7 @@ export default function GameTablePage() {
           body: JSON.stringify({
             gameId: game.gameId,
             action,
+            ...extra,
           }),
         }
       );
@@ -104,7 +101,12 @@ export default function GameTablePage() {
       }
 
       set_game(data.game);
-      set_seconds_left(0);
+      set_swap_mode(false);
+
+      // A swap keeps the hand open, so only stop the timer when the hand ends.
+      if (data.game.phase !== "decision") {
+        set_seconds_left(0);
+      }
 
       set_chat_log((previous) => [
         ...previous,
@@ -199,33 +201,16 @@ export default function GameTablePage() {
     }
   }, [seconds_left, game?.phase, loading, is_spectator]);
 
-  // Connect to this table's chat room (F5)
-  useEffect(() => {
-    const socket = io(API_URL);
-    socket_ref.current = socket;
-
-    // Join on every connect, so a dropped connection rejoins the room
-    socket.on("connect", () => {
-      socket.emit("chat:join", { lobbyId: lobby_id, username: player.username });
-    });
-
-    socket.on("chat:message", (message) => {
-      set_chat_log((previous) => [...previous, { user: message.user, text: message.text }]);
-    });
-
-    socket.on("chat:error", (message) => {
-      set_chat_log((previous) => [...previous, { user: "System", text: message }]);
-    });
-
-    return () => socket.disconnect();
-  }, [lobby_id, player.username]);
-
   function handle_send_chat(event) {
     event.preventDefault();
 
     if (!chat_input.trim()) return;
 
-    socket_ref.current?.emit("chat:send", { text: chat_input });
+    set_chat_log((previous) => [
+      ...previous,
+      { user: "You", text: chat_input.trim() },
+    ]);
+
     set_chat_input("");
   }
 
@@ -381,7 +366,32 @@ export default function GameTablePage() {
 
           <div className="hand_row">
             {game?.playerHand?.map((card, index) => (
-              <PlayingCard key={index} card={card} big />
+              <div
+                key={index}
+                role={swap_mode ? "button" : undefined}
+                tabIndex={swap_mode ? 0 : undefined}
+                aria-label={swap_mode ? `Swap ${card.rank}${card.suit}` : undefined}
+                style={
+                  swap_mode
+                    ? { cursor: "pointer", outline: "2px dashed gold", borderRadius: 8 }
+                    : undefined
+                }
+                onClick={
+                  swap_mode ? () => send_action("swap", { cardIndex: index }) : undefined
+                }
+                onKeyDown={
+                  swap_mode
+                    ? (event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          send_action("swap", { cardIndex: index });
+                        }
+                      }
+                    : undefined
+                }
+              >
+                <PlayingCard card={card} big />
+              </div>
             ))}
           </div>
 
@@ -407,6 +417,21 @@ export default function GameTablePage() {
                 onClick={() => send_action("fold")}
               >
                 Fold
+              </button>
+
+              <button
+                className="action_btn"
+                disabled={phase !== "decision" || loading || !game.canSwap}
+                onClick={() => set_swap_mode((on) => !on)}
+                title={
+                  game.swapUsed
+                    ? "You already swapped this hand"
+                    : `Replace one card for $${game.swapCost}`
+                }
+              >
+                {swap_mode ? "Cancel swap" : "Swap Card"}
+                <br />
+                {game.swapUsed ? "used" : `$${game.swapCost}`}
               </button>
 
               <button

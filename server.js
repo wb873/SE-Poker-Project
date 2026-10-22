@@ -3,6 +3,7 @@ const express = require("express");
 const cors = require("cors");
 const gameRoutes = require("./routes/game_routes");
 const lobbyRoutes = require("./routes/lobby_routes");
+const friendRoutes = require("./routes/friend_routes");
 const db = require("./model/DbConnection");
 const http = require("http");
 const { Server } = require("socket.io");
@@ -28,7 +29,7 @@ app.get("/api/health", (req, res) => {
 
 app.use("/api/game", gameRoutes);
 app.use("/api/lobbies", lobbyRoutes);
-
+app.use("/api/friends", friendRoutes);
 io.on("connection", (socket) => {
   console.log(`Socket connected: ${socket.id}`);
   ChatController.registerChatHandlers(io, socket);

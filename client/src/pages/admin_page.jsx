@@ -1,112 +1,150 @@
-import React, { useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { use_session } from "../session.jsx";
-
-// Demo data until authenticated contact and user routes are available.
-const demo_contacts = [
-  { id: "c1", name: "Alex", email: "alex@example.com", subject: "Lost connection", message: "My game disconnected during a hand. Can you help?", status: "New", reply: "" },
-  { id: "c2", name: "Sam", email: "sam@example.com", subject: "Account help", message: "How can I change the email on my account?", status: "New", reply: "" },
-];
-const demo_users = [
-  { id: "u1", username: "Alex", email: "alex@example.com", banned: false },
-  { id: "u2", username: "Sam", email: "sam@example.com", banned: false },
-];
+import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { use_session } from '../session.jsx';
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
 export default function AdminPage() {
   const navigate = useNavigate();
-  const { player, logout } = use_session();
-  const [contacts, set_contacts] = useState(demo_contacts);
-  const [users, set_users] = useState(demo_users);
-  const [selected_id, set_selected_id] = useState(demo_contacts[0].id);
+  const { player, token, logout } = use_session();
+  const [contacts, set_contacts] = useState([]);
+  const [users, set_users] = useState([]);
+  const [selected_id, set_selected_id] = useState(null);
   const [drafts, set_drafts] = useState({});
-  const [search, set_search] = useState("");
-  const [notice, set_notice] = useState("");
-  const selected = contacts.find((contact) => contact.id === selected_id);
-  const visible_users = users.filter((user) =>
-    `${user.username} ${user.email}`.toLowerCase().includes(search.trim().toLowerCase())
-  );
+  const [passwords, set_passwords] = useState({});
+  const [search, set_search] = useState('');
+  const [notice, set_notice] = useState('');
+  const [error, set_error] = useState('');
+  const [busy, set_busy] = useState(false);
+  const [loading, set_loading] = useState(true);
+  const [refresh, set_refresh] = useState(0);
+  const selected = contacts.find((contact) => contact._id === selected_id);
+  const visible_users = users.filter((user) => `${user.username} ${user.email}`.toLowerCase().includes(search.trim().toLowerCase()));
 
-  function respond(event) {
+  useEffect(() => {
+    let active = true;
+    async function load_dashboard() {
+      try {
+        const [messages_response, users_response] = await Promise.all([
+          fetch(`${API_URL}/api/admin/contacts`, { headers: { Authorization: `Bearer ${token}` } }),
+          fetch(`${API_URL}/api/admin/users`, { headers: { Authorization: `Bearer ${token}` } }),
+        ]);
+        const [messages, accounts] = await Promise.all([messages_response.json(), users_response.json()]);
+        if (!messages_response.ok) throw new Error(messages.error || 'Could not load messages.');
+        if (!users_response.ok) throw new Error(accounts.error || 'Could not load users.');
+        if (!active) return;
+        set_contacts(messages); set_users(accounts);
+        set_selected_id((id) => messages.some((item) => item._id === id) ? id : messages[0]?._id || null);
+      } catch (err) { if (active) set_error(err.message); }
+      finally { if (active) set_loading(false); }
+    }
+    load_dashboard();
+    return () => { active = false; };
+  }, [token, refresh]);
+
+  async function respond(event) {
     event.preventDefault();
-    const reply = (drafts[selected_id] || "").trim();
-    if (!reply) return;
-    // TODO: save the response through an authenticated contact API.
-    set_contacts((previous) => previous.map((contact) =>
-      contact.id === selected_id ? { ...contact, reply, status: "Responded" } : contact
-    ));
-    set_drafts((previous) => ({ ...previous, [selected_id]: "" }));
-    set_notice("Demo reply saved for this visit. No message was sent to the user.");
+    set_busy(true); set_error(''); set_notice('');
+    try {
+      const response = await fetch(`${API_URL}/api/admin/contacts/${selected_id}/reply`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ reply: drafts[selected_id] }),
+      });
+      const contact = await response.json();
+      if (!response.ok) throw new Error(contact.error || 'Could not save response.');
+      set_contacts((previous) => previous.map((item) => item._id === contact._id ? contact : item));
+      set_drafts((previous) => ({ ...previous, [selected_id]: '' }));
+      set_notice('Response saved. The user can read it on their Contact Admin page.');
+    } catch (err) { set_error(err.message); }
+    finally { set_busy(false); }
   }
 
-  function reset_password(user) {
-    // TODO: request a password-reset link through the admin user API.
-    set_notice(`Demo: password reset requested for ${user.username}. No password was changed and no email was sent.`);
+  async function reset_password(event, user) {
+    event.preventDefault();
+    if (!window.confirm(`Reset the password for ${user.username}? Existing sessions will stop working.`)) return;
+    set_busy(true); set_error(''); set_notice('');
+    try {
+      const response = await fetch(`${API_URL}/api/admin/users/${user._id}/password`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ newPassword: passwords[user._id] }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Could not reset password.');
+      set_passwords((previous) => ({ ...previous, [user._id]: '' }));
+      set_notice(`Password changed for ${user.username}. Share it privately; no email was sent.`);
+    } catch (err) { set_error(err.message); }
+    finally { set_busy(false); }
   }
 
-  function toggle_ban(user) {
-    // TODO: persist the ban through the admin user API.
-    set_users((previous) => previous.map((item) =>
-      item.id === user.id ? { ...item, banned: !item.banned } : item
-    ));
-    set_notice(`Demo: ${user.username} is now ${user.banned ? "active" : "banned"} in this preview only.`);
+  async function toggle_ban(user) {
+    if (!window.confirm(`${user.isBanned ? 'Unban' : 'Ban'} ${user.username}?`)) return;
+    set_busy(true); set_error(''); set_notice('');
+    try {
+      const response = await fetch(`${API_URL}/api/admin/users/${user._id}/ban`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ isBanned: !user.isBanned }),
+      });
+      const updated = await response.json();
+      if (!response.ok) throw new Error(updated.error || 'Could not change ban status.');
+      set_users((previous) => previous.map((item) => item._id === updated._id ? updated : item));
+      set_notice(`${user.username} is now ${updated.isBanned ? 'banned' : 'active'}.`);
+    } catch (err) { set_error(err.message); }
+    finally { set_busy(false); }
   }
 
-  return (
-    <div className="page">
-      <div className="page_header">
-        <h1>Admin Dashboard</h1>
-        <span className="tag cyan">{player.username}</span>
-        <button className="btn" onClick={() => { logout(); navigate("/"); }}>Log Out</button>
-      </div>
-      <p className="panel muted">Demo admin tools. Messages and users below are samples. Changes last only for this visit; real accounts and messages are not affected.</p>
-      {notice && <div className="panel" role="status">{notice}</div>}
-
-      <section className="panel admin_section" aria-labelledby="contact_title">
-        <h2 id="contact_title">Contact Messages</h2>
-        <div className="admin_columns">
-          <div className="list" aria-label="Contact messages">
-            {contacts.map((contact) => (
-              <button key={contact.id} className={"btn admin_message" + (contact.id === selected_id ? " primary" : "")}
-                aria-pressed={contact.id === selected_id}
-                onClick={() => { set_selected_id(contact.id); set_notice(""); }}>
-                <b>{contact.subject}</b><br />{contact.name} · {contact.status}
-              </button>
-            ))}
-          </div>
-          {selected && <div>
-            <h3>{selected.subject}</h3>
-            <p className="muted">From {selected.name} ({selected.email})</p>
-            <p className="admin_text">{selected.message}</p>
-            {selected.reply && <div className="panel"><b>Saved demo response</b><p className="admin_text">{selected.reply}</p></div>}
-            <form className="form_grid" onSubmit={respond}>
-              <label htmlFor="admin_reply">Response</label>
-              <textarea id="admin_reply" className="input" rows={5} required maxLength={2000}
-                placeholder="Write a response to this user..." value={drafts[selected_id] || ""}
-                onChange={(event) => set_drafts((previous) => ({ ...previous, [selected_id]: event.target.value }))} />
-              <button className="btn primary" type="submit" disabled={!(drafts[selected_id] || "").trim()}>Save Demo Response</button>
-            </form>
-          </div>}
-        </div>
-      </section>
-
-      <section className="panel admin_section" aria-labelledby="users_title">
-        <h2 id="users_title">User Management</h2>
-        <label htmlFor="admin_search">Find a user</label>
-        <input id="admin_search" className="input" placeholder="Search sample users by username or email..."
-          value={search} onChange={(event) => set_search(event.target.value)} />
-        <div className="list admin_section">
-          {visible_users.map((user) => (
-            <div key={user.id} className="list_item admin_user">
-              <div><b>{user.username}</b><div className="muted">{user.email}</div></div>
-              <span className="tag">{user.banned ? "Banned" : "Active"}</span>
-              <span className="spacer" />
-              <button className="btn small" onClick={() => reset_password(user)}>Reset Password (Demo)</button>
-              <button className="btn small danger" onClick={() => toggle_ban(user)}>{user.banned ? "Unban" : "Ban"} User (Demo)</button>
-            </div>
-          ))}
-          {visible_users.length === 0 && <p className="muted">No sample users match your search.</p>}
-        </div>
-      </section>
+  return <div className="page">
+    <div className="page_header">
+      <h1>Admin Dashboard</h1><span className="tag cyan">{player.username}</span>
+      <button className="btn" disabled={loading || busy} onClick={() => { set_loading(true); set_error(''); set_refresh((value) => value + 1); }}>Refresh</button>
+      <button className="btn" onClick={() => { logout(); navigate('/'); }}>Log Out</button>
     </div>
-  );
+    {loading && <p role="status">Loading messages and users...</p>}
+    {error && <p className="error_text" role="alert">{error}</p>}
+    {notice && <p className="panel" role="status">{notice}</p>}
+    <section className="panel admin_section" aria-labelledby="contact_title">
+      <h2 id="contact_title">Contact Messages</h2>
+      {!loading && contacts.length === 0 && <p className="muted">No contact messages.</p>}
+      <div className="admin_columns">
+        <div className="list">
+          {contacts.map((contact) => <button key={contact._id} disabled={busy} className={'btn admin_message' + (contact._id === selected_id ? ' primary' : '')}
+            aria-pressed={contact._id === selected_id} onClick={() => set_selected_id(contact._id)}>
+            <b>{contact.subject || 'No subject'}</b><br />{contact.name || contact.email} · {contact.status === 1 ? 'Responded' : 'New'}
+          </button>)}
+        </div>
+        {selected && <div>
+          <h3>{selected.subject || 'No subject'}</h3><p className="muted">From {selected.name} ({selected.email})</p>
+          <p className="admin_text">{selected.message}</p>
+          {selected.reply && <div className="panel"><b>Saved response</b><p className="admin_text">{selected.reply}</p></div>}
+          <form className="form_grid" onSubmit={respond}>
+            <label htmlFor="admin_reply">Response</label>
+            <textarea id="admin_reply" className="input" rows={5} required maxLength={5000} value={drafts[selected_id] || ''}
+              onChange={(event) => set_drafts((previous) => ({ ...previous, [selected_id]: event.target.value }))} />
+            <button className="btn primary" disabled={busy || !(drafts[selected_id] || '').trim()}>Save Response</button>
+          </form>
+        </div>}
+      </div>
+    </section>
+    <section className="panel admin_section" aria-labelledby="users_title">
+      <h2 id="users_title">User Management</h2>
+      <label htmlFor="admin_search">Find a user</label>
+      <input id="admin_search" className="input" value={search} placeholder="Username or email" onChange={(event) => set_search(event.target.value)} />
+      <div className="list admin_section">
+        {visible_users.map((user) => <div className="panel" key={user._id}>
+          <div className="row wrap"><b>{user.username}</b><span className="muted">{user.email}</span><span className="tag">{user.isAdmin ? 'Admin' : user.isBanned ? 'Banned' : 'Active'}</span></div>
+          {!user.isAdmin && <>
+            <form className="row wrap admin_section" onSubmit={(event) => reset_password(event, user)}>
+              <label htmlFor={`password_${user._id}`}>New password</label>
+              <input id={`password_${user._id}`} className="input" type="password" required minLength={8} maxLength={128} autoComplete="new-password"
+                value={passwords[user._id] || ''} onChange={(event) => set_passwords((previous) => ({ ...previous, [user._id]: event.target.value }))} />
+              <button className="btn small" disabled={busy}>Reset Password</button>
+            </form>
+            <button className="btn small danger admin_section" disabled={busy} onClick={() => toggle_ban(user)}>{user.isBanned ? 'Unban' : 'Ban'} User</button>
+          </>}
+        </div>)}
+        {!loading && visible_users.length === 0 && <p className="muted">No users match your search.</p>}
+      </div>
+    </section>
+  </div>;
 }

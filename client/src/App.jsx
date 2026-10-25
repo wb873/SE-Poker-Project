@@ -11,8 +11,9 @@ import ProfilePage from "./pages/profile_page.jsx";
 import FriendsPage from "./pages/friends_page.jsx";
 import DisclaimerBanner from "./components/disclaimer_banner.jsx";
 import AdminPage from "./pages/admin_page.jsx";
+import ContactPage from './pages/contact_page.jsx';
 
-// UI guard only. The future admin API must also verify permissions on the server.
+// API routes independently verify the session and admin role.
 function RequireAdmin({ children }) {
   const { player } = use_session();
   if (!player) return <Navigate to="/" replace />;
@@ -39,6 +40,7 @@ export default function App() {
       <Routes>
         <Route path="/" element={<LoginPage />} />
         <Route path="/admin" element={<RequireAdmin><AdminPage /></RequireAdmin>} />
+        <Route path="/contact" element={<RequireRegistered><ContactPage /></RequireRegistered>} />
         <Route path="/menu" element={<RequireSession><MainMenuPage /></RequireSession>} />
         <Route path="/lobbies" element={<RequireSession><LobbyBrowserPage /></RequireSession>} />
         <Route path="/lobbies/new" element={<RequireSession><CreateLobbyPage /></RequireSession>} />

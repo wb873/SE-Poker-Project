@@ -14,6 +14,9 @@ export default function FriendsPage() {
   const [show_requests, set_show_requests] = useState(false);
   const [message, set_message] = useState("");
   const [error, set_error] = useState("");
+  const [chat_with, set_chat_with] = useState(null); // friend whose chat is open
+  const [chat_messages, set_chat_messages] = useState([]);
+  const [chat_text, set_chat_text] = useState("");
 
    // Calls the friends API as the logged-in player; throws the server's error message
   async function friends_api(path, options = {}) {
@@ -61,6 +64,47 @@ export default function FriendsPage() {
     set_search("");
   }
 
+   // Calls the messages API for one friend (F4); throws the server's error message
+  async function messages_api(name, options = {}) {
+    const response = await fetch(`${API_URL}/api/messages/${encodeURIComponent(name)}`, {
+      ...options,
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || "Something went wrong.");
+    return data;
+  }
+
+  async function load_messages(name) {
+    try {
+      const data = await messages_api(name);
+      set_chat_messages(data.messages);
+    } catch (err) {
+      set_error(err.message);
+      set_chat_with(null); // e.g. no longer friends
+    }
+  }
+
+  async function send_message(event) {
+    event.preventDefault();
+    if (!chat_text.trim()) return;
+    try {
+      await messages_api(chat_with, { method: "POST", body: JSON.stringify({ text: chat_text }) });
+      set_chat_text("");
+      load_messages(chat_with);
+    } catch (err) {
+      set_error(err.message);
+    }
+  }
+
+  // While a chat is open, check for new messages every 3 seconds
+  useEffect(() => {
+    if (!chat_with) return;
+    set_chat_messages([]);
+    load_messages(chat_with);
+    const timer = setInterval(() => load_messages(chat_with), 3000);
+    return () => clearInterval(timer);
+  }, [chat_with, token]);
   return ( 
     <div className="page">
       <PageHeader title="Friends List" />
@@ -105,12 +149,31 @@ export default function FriendsPage() {
             <div className="avatar_circle">{name[0].toUpperCase()}</div>
             <b>{name}</b>
             <span className="spacer" />
-            <button className="btn small" onClick={() => alert("Messaging coming soon")}>Msg</button>
+            <button className="btn small" onClick={() => set_chat_with(name)}>Msg</button>
             <button className="btn small danger" onClick={() => run_action(`/${encodeURIComponent(name)}`, "DELETE")}>X</button>
           </div>
         ))}
         {friends.length === 0 && <p className="muted">No friends yet. Add someone by username above.</p>}
       </div>
+       {chat_with && (
+        <div className="panel chat_box" style={{ marginTop: 16 }}>
+          <div className="row">
+            <h3>Chat with {chat_with}</h3>
+            <span className="spacer" />
+            <button className="btn small" onClick={() => set_chat_with(null)}>Close</button>
+          </div>
+          <div className="chat_log">
+            {chat_messages.map((m, index) => (
+              <div key={index}><b>{m.from}:</b> {m.text}</div>
+            ))}
+            {chat_messages.length === 0 && <p className="muted">No messages yet. Say hi!</p>}
+          </div>
+          <form className="row" onSubmit={send_message}>
+            <input className="input" maxLength={500} placeholder={`Message ${chat_with}...`} value={chat_text} onChange={(e) => set_chat_text(e.target.value)} />
+            <button className="btn primary" type="submit">Send</button>
+          </form>
+        </div>
+      )}
     </div>
   );
 }

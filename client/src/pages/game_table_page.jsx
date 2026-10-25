@@ -36,7 +36,7 @@ export default function GameTablePage() {
   const [search_params] = useSearchParams();
   const is_spectator = search_params.get("spectate") === "1";
   const { lobby_id } = useParams();
-  const { player } = use_session();
+  const { player, token } = use_session();
   const socket_ref = React.useRef(null);
 
   const [game, set_game] = useState(null);
@@ -57,9 +57,13 @@ export default function GameTablePage() {
     set_error("");
 
     try {
+      // Logged-in players send their token so their hands count for the leaderboard (LB1)
+      const headers = { "Content-Type": "application/json" };
+      if (token) headers.Authorization = `Bearer ${token}`;
+
       const response = await fetch(`${API_URL}/api/game/start`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers,
         body: JSON.stringify({ ante: 10 }),
       });
 

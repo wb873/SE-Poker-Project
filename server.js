@@ -4,6 +4,7 @@ const cors = require("cors");
 const gameRoutes = require("./routes/game_routes");
 const lobbyRoutes = require("./routes/lobby_routes");
 const userRoutes = require("./routes/user_routes");
+const friendRoutes = require("./routes/friend_routes");
 const db = require("./model/DbConnection");
 const http = require("http");
 const { Server } = require("socket.io");
@@ -32,6 +33,7 @@ app.use("/api/lobbies", lobbyRoutes);
 app.use("/api/auth", userRoutes);
 app.use('/api/contacts', require('./routes/contact_routes'));
 app.use('/api/admin', require('./routes/admin_routes'));
+app.use("/api/friends", friendRoutes);
 
 io.on("connection", (socket) => {
   console.log(`Socket connected: ${socket.id}`);

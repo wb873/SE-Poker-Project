@@ -1,0 +1,11 @@
+const router = require('express').Router();
+const auth = require('../util/AuthSession');
+const contacts = require('../controller/ContactController');
+const admin = require('../controller/AdminController');
+router.use(auth.requireUser, auth.requireAdmin);
+router.get('/contacts', contacts.getAll);
+router.patch('/contacts/:id/reply', contacts.respond);
+router.get('/users', admin.listUsers);
+router.patch('/users/:id/password', admin.resetPassword);
+router.patch('/users/:id/ban', admin.setBan);
+module.exports = router;

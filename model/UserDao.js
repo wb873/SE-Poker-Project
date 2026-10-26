@@ -11,6 +11,7 @@ const userSchema = new mongoose.Schema(
     avatar: { type: String, default: "default" },
     balance: { type: Number, min: 0, default: 10000 },
     isAdmin: { type: Boolean, default: false },
+    isBanned: { type: Boolean, default: false },
     stats: {
       handsPlayed: { type: Number, default: 0 },
       handsWon: { type: Number, default: 0 },
@@ -57,3 +58,7 @@ exports.updatePassword = (id, passwordHash) => {
 exports.deleteAll = () => User.deleteMany({}); // tests only
 
 exports.model = User;
+
+// Admin operations never return password hashes.
+exports.listForAdmin = () => User.find().select('username email isAdmin isBanned').sort({ username: 1 }).lean();
+exports.setBanned = (id, isBanned) => User.findByIdAndUpdate(id, { isBanned }, { returnDocument: 'after' }).select('username email isAdmin isBanned');

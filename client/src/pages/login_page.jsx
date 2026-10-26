@@ -11,8 +11,10 @@ export default function LoginPage() {
   const [password, set_password] = useState("");
   const [confirm_password, set_confirm_password] = useState("");
   const [message, set_message] = useState("");
+  const [username, set_username] = useState('');
+  const [busy, set_busy] = useState(false);
 
-  function handle_submit(event) {
+  async function handle_submit(event) {
     event.preventDefault();
     set_message("");
 
@@ -32,17 +34,24 @@ export default function LoginPage() {
       set_message("Passwords do not match.");
       return;
     }
-    if (mode === "admin") {
-      if (!admin_login(identifier.trim(), password)) {
-        set_message("Incorrect demo admin username or password.");
-        return;
+    set_busy(true);
+    try {
+      if (mode === 'register') {
+        const response = await fetch(`${API_URL}/api/auth/register`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username: username.trim(), email: identifier.trim(), password }),
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Could not create the account.');
       }
-      navigate("/admin");
-      return;
+      const user = await (mode === 'admin' ? admin_login : login)(identifier.trim(), password);
+      navigate(user.isAdmin ? '/admin' : '/menu');
+    } catch (error) {
+      set_message(error.message);
+    } finally {
+      set_busy(false);
     }
-    // TODO: replace with POST /api/auth/login or /api/auth/register
-    login(identifier.trim());
-    navigate("/menu");
   }
 
   function handle_guest() {
@@ -67,7 +76,8 @@ export default function LoginPage() {
 
       <form className="login_form" onSubmit={handle_submit}>
         <h2 style={{ textAlign: "center" }}>{title}</h2>
-        {mode === "admin" && <p className="muted">Demo access: username <b>admin</b>, password <b>admin123</b>. Account authentication is not connected yet.</p>}
+        {mode === "admin" && <p className="muted">Sign in using your administrator account.</p>}
+        {mode === 'register' && <input className="input" aria-label="Username" placeholder="Username" required value={username} onChange={(event) => set_username(event.target.value)} />}
         <input
           className="input"
           aria-label={mode === "admin" ? "Admin username" : "Username or email"}
@@ -84,7 +94,7 @@ export default function LoginPage() {
         {message && <div className="error_text">{message}</div>}
 
         <div className="row">
-          <button className="btn primary" type="submit">{mode === "reset" ? "Send Reset Link" : title}</button>
+          <button className="btn primary" type="submit" disabled={busy}>{busy ? 'Signing in...' : mode === "reset" ? "Send Reset Link" : title}</button>
           <span className="spacer" />
           {mode === "login" && <button type="button" className="btn" onClick={() => set_mode("reset")}>Forgot Password</button>}
         </div>

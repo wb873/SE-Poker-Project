@@ -36,6 +36,8 @@ export default function MainMenuPage() {
           <button className="btn" onClick={() => navigate("/lobbies")}>Join with Code</button>
           <button className="btn" disabled={is_guest} onClick={() => navigate("/profile")}>Profile</button>
           <button className="btn" disabled={is_guest} onClick={() => navigate("/friends")}>Friends</button>
+          <button className="btn" disabled={is_guest} onClick={() => navigate('/contact')}>Contact Admin</button>
+          {player.is_admin && <button className="btn" onClick={() => navigate('/admin')}>Admin Dashboard</button>}
           <button className="btn" onClick={() => navigate("/leaderboard")}>Leaderboard</button>
           <button className="btn" onClick={() => navigate("/tutorial")}>Tutorial</button>
         </div>

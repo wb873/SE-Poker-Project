@@ -1,5 +1,6 @@
 const UserDao = require("../model/UserDao");
 const PasswordUtil = require("../util/PasswordUtil");
+const AuthSession = require('../util/AuthSession');
 
 // User accounts: register (P1), login (P2), logout (P3), password reset (P4).
 
@@ -76,16 +77,17 @@ exports.login = async function (req, res) {
       return res.status(401).json({ success: false, error: "Incorrect username or password." });
     }
 
-    res.json({ success: true, user: toPublicUser(user) });
+    if (user.isBanned) return res.status(403).json({ success: false, error: 'This account is banned.' });
+    res.json({ success: true, user: toPublicUser(user), token: AuthSession.create(user) });
   } catch (err) {
     res.status(500).json({ success: false, error: "Could not log in." });
   }
 };
 
 // POST /api/auth/logout  (P3)
-// Sessions are held by the client for now, so the server only confirms. When a
-// token scheme is added this is where it would be invalidated.
+// Revoke the bearer session held by this client.
 exports.logout = async function (req, res) {
+  AuthSession.revoke((req.get?.('Authorization') || '').replace(/^Bearer /, ''));
   res.json({ success: true });
 };
 

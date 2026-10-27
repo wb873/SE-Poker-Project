@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { use_session } from '../session.jsx';
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+import { API_URL } from '../api_config.js';
 
 export default function AdminPage() {
   const navigate = useNavigate();

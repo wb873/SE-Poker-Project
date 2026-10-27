@@ -1,8 +1,8 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { use_session } from "../session.jsx";
+import { API_URL } from "../api_config.js";
 
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
 const MIN_PASSWORD_LENGTH = 8; // matches util/PasswordUtil.js
 
 async function post_json(path, body) {

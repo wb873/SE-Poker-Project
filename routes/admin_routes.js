@@ -8,4 +8,5 @@ router.patch('/contacts/:id/reply', contacts.respond);
 router.get('/users', admin.listUsers);
 router.patch('/users/:id/password', admin.resetPassword);
 router.patch('/users/:id/ban', admin.setBan);
+router.patch('/users/:id/admin', admin.setAdmin);
 module.exports = router;

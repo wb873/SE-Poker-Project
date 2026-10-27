@@ -4,10 +4,14 @@ jest.mock("../model/UserDao", () => ({
   create: jest.fn(),
   findByIdentifier: jest.fn(),
   findByEmail: jest.fn(),
+  findByUsername: jest.fn(),
+  findByUsernameAndEmail: jest.fn(),
   updatePassword: jest.fn(),
 }));
+jest.mock("../model/ContactDao", () => ({ create: jest.fn() }));
 
 const UserDao = require("../model/UserDao");
+const ContactDao = require("../model/ContactDao");
 const UserController = require("./UserController");
 const PasswordUtil = require("../util/PasswordUtil");
 
@@ -39,6 +43,9 @@ beforeEach(() => {
   UserDao.create.mockImplementation(async (data) => storedUser(data));
   UserDao.findByIdentifier.mockResolvedValue(null);
   UserDao.findByEmail.mockResolvedValue(null);
+  UserDao.findByUsername.mockResolvedValue(null);
+  UserDao.findByUsernameAndEmail.mockResolvedValue(null);
+  ContactDao.create.mockImplementation(async (data) => ({ _id: "c1", ...data }));
   UserDao.updatePassword.mockImplementation(async (id, passwordHash) => storedUser({ passwordHash }));
 });
 
@@ -101,7 +108,39 @@ describe("register (P1)", () => {
     expect(res.statusCode).toBe(400);
   });
 
-  test("returns 409 when the username or email is taken", async () => {
+  test("returns 409 naming the username when it is already in use", async () => {
+    UserDao.findByUsername.mockResolvedValue(storedUser());
+    const res = mockRes();
+
+    await UserController.register({ body: validBody }, res);
+
+    expect(res.statusCode).toBe(409);
+    expect(res.body).toMatchObject({ field: "username", error: "That username is already in use." });
+    expect(UserDao.create).not.toHaveBeenCalled();
+  });
+
+  test("checks the username exactly as typed so the DAO can match it ignoring case", async () => {
+    UserDao.findByUsername.mockResolvedValue(storedUser());
+    const res = mockRes();
+
+    await UserController.register({ body: { ...validBody, username: "WillB" } }, res);
+
+    expect(UserDao.findByUsername).toHaveBeenCalledWith("WillB");
+    expect(res.statusCode).toBe(409);
+  });
+
+  test("returns 409 naming the email when it is already in use", async () => {
+    UserDao.findByEmail.mockResolvedValue(storedUser());
+    const res = mockRes();
+
+    await UserController.register({ body: validBody }, res);
+
+    expect(res.statusCode).toBe(409);
+    expect(res.body).toMatchObject({ field: "email", error: "That email is already in use." });
+    expect(UserDao.create).not.toHaveBeenCalled();
+  });
+
+  test("returns 409 when the unique index rejects a racing signup", async () => {
     UserDao.create.mockRejectedValue({ code: 11000 });
     const res = mockRes();
 
@@ -154,27 +193,25 @@ describe("login (P2)", () => {
     expect(res.statusCode).toBe(401);
   });
 
-  test("an unknown user returns 401", async () => {
+  test("an unknown user returns 404 ACCOUNT_NOT_FOUND so the client sends them to Create Account", async () => {
     UserDao.findByIdentifier.mockResolvedValue(null);
     const res = mockRes();
 
     await UserController.login({ body: { identifier: "nobody", password: "secret123" } }, res);
 
-    expect(res.statusCode).toBe(401);
+    expect(res.statusCode).toBe(404);
+    expect(res.body.code).toBe("ACCOUNT_NOT_FOUND");
+    expect(res.body.success).toBe(false);
   });
 
-  test("gives the same answer for a wrong password and an unknown user", async () => {
-    const unknown = mockRes();
-    UserDao.findByIdentifier.mockResolvedValue(null);
-    await UserController.login({ body: { identifier: "nobody", password: "secret123" } }, unknown);
+  test("a temporary password logs in and tells the client to offer a change", async () => {
+    UserDao.findByIdentifier.mockResolvedValue(storedUser({ mustChangePassword: true }));
+    const res = mockRes();
 
-    const wrongPassword = mockRes();
-    UserDao.findByIdentifier.mockResolvedValue(storedUser());
-    await UserController.login({ body: { identifier: "willb", password: "wrongpassword" } }, wrongPassword);
+    await UserController.login({ body: { identifier: "willb", password: "secret123" } }, res);
 
-    // Identical responses, so the endpoint cannot be used to discover which accounts exist
-    expect(unknown.statusCode).toBe(wrongPassword.statusCode);
-    expect(unknown.body).toEqual(wrongPassword.body);
+    expect(res.statusCode).toBe(200);
+    expect(res.body.user.mustChangePassword).toBe(true);
   });
 
   test.each([
@@ -281,5 +318,62 @@ describe("resetPassword (P4)", () => {
     await UserController.resetPassword({ body: validBody }, res);
 
     expect(res.statusCode).toBe(500);
+  });
+});
+
+describe("checkAvailability (P1)", () => {
+  test("reports a taken username and a free email", async () => {
+    UserDao.findByUsername.mockResolvedValue(storedUser());
+    const res = mockRes();
+
+    await UserController.checkAvailability({ query: { username: "willb", email: "new@example.com" } }, res);
+
+    expect(res.body).toEqual({ success: true, usernameAvailable: false, emailAvailable: true });
+  });
+
+  test("only reports the fields it was asked about", async () => {
+    const res = mockRes();
+    await UserController.checkAvailability({ query: { email: "new@example.com" } }, res);
+
+    expect(res.body).toEqual({ success: true, emailAvailable: true });
+    expect(UserDao.findByUsername).not.toHaveBeenCalled();
+  });
+});
+
+describe("forgotPassword (P4)", () => {
+  const validBody = { username: "willb", email: "will@example.com" };
+
+  test("a matching account sends a reset request to the admin inbox", async () => {
+    UserDao.findByUsernameAndEmail.mockResolvedValue(storedUser());
+    const res = mockRes();
+
+    await UserController.forgotPassword({ body: validBody }, res);
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(ContactDao.create).toHaveBeenCalledWith(expect.objectContaining({
+      name: "willb",
+      email: "will@example.com",
+      subject: "Password reset request",
+    }));
+  });
+
+  test("no matching account returns 404 and sends nothing", async () => {
+    const res = mockRes();
+    await UserController.forgotPassword({ body: validBody }, res);
+
+    expect(res.statusCode).toBe(404);
+    expect(ContactDao.create).not.toHaveBeenCalled();
+  });
+
+  test.each([
+    ["a missing username", { username: undefined }],
+    ["an invalid email", { email: "nope" }],
+  ])("rejects %s with 400", async (_label, override) => {
+    const res = mockRes();
+    await UserController.forgotPassword({ body: { ...validBody, ...override } }, res);
+
+    expect(res.statusCode).toBe(400);
+    expect(UserDao.findByUsernameAndEmail).not.toHaveBeenCalled();
   });
 });

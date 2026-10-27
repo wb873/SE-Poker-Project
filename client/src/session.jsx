@@ -24,7 +24,19 @@ export function SessionProvider({ children }) {
       body: JSON.stringify({ identifier, password }),
     });
     const data = await response.json();
-    if (!response.ok) throw new Error(data.error || 'Could not log in.');
+    if (!response.ok) throw Object.assign(new Error(data.error || 'Could not log in.'), { code: data.code });
+    return accept_session(data);
+  }
+
+  // Changing the password ends every session, so the server sends back a new token
+  async function change_password(current_password, new_password) {
+    const response = await fetch(`${API_URL}/api/auth/change-password`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ currentPassword: current_password, newPassword: new_password }),
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Could not change the password.');
     return accept_session(data);
   }
 
@@ -66,7 +78,7 @@ export function SessionProvider({ children }) {
     set_balance(0);
   }
 
-  const value = { player, balance, token, set_balance, login, play_as_guest, admin_login, logout };
+  const value = { player, balance, token, set_balance, login, change_password, play_as_guest, admin_login, logout };
   return <session_context.Provider value={value}>{children}</session_context.Provider>;
 }
 

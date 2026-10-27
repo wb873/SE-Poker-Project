@@ -12,7 +12,8 @@ const ChatController = require("./controller/ChatController");
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: "*" } });
-const PORT = process.env.PORT || 5000;
+// Not 5000: macOS AirPlay Receiver listens there. Keep in sync with client/src/api_config.js
+const PORT = process.env.PORT || 4000;
 
 if (process.env.DB_URI || process.env.CI) {
   db.connect();

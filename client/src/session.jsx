@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState } from "react";
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+import { API_URL } from "./api_config.js";
 
 // Session context: holds the current player, balance and authenticated API token.
 const session_context = createContext(null);

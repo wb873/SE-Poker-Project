@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { use_session } from "../session.jsx";
+import { API_URL } from "../api_config.js";
 
 // Login screen: login, create account, forgot password, guest play (P1, P2, P4, P5)
 export default function LoginPage() {

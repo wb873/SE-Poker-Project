@@ -3,9 +3,7 @@ import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import PlayingCard from "../components/playing_card.jsx";
 import { io } from "socket.io-client";
 import { use_session } from "../session.jsx";
-
-const API_URL =
-  import.meta.env.VITE_API_URL || "http://localhost:5000";
+import { API_URL } from "../api_config.js";
 
 const turn_seconds = 30;
 

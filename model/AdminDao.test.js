@@ -7,7 +7,7 @@ test('admin user list explicitly selects safe fields', async () => {
   const query = { select: jest.fn().mockReturnThis(), sort: jest.fn().mockReturnThis(), lean: jest.fn().mockResolvedValue([]) };
   jest.spyOn(users.model, 'find').mockReturnValue(query);
   await users.listForAdmin();
-  expect(query.select).toHaveBeenCalledWith('username email isAdmin isBanned');
+  expect(query.select).toHaveBeenCalledWith('username email isAdmin isBanned mustChangePassword');
 });
 test('ban updates only the ban field and selects safe response fields', async () => {
   const query = { select: jest.fn().mockResolvedValue({ isBanned: true }) };
@@ -33,4 +33,11 @@ test('respond rejects malformed ids without issuing a database operation', async
   const update = jest.spyOn(mongoose.model('contact'), 'findByIdAndUpdate');
   expect(await contacts.respond('bad-id', 'Hello')).toBeNull();
   expect(update).not.toHaveBeenCalled();
+});
+test('setAdmin sets only the admin flag and selects safe response fields', async () => {
+  const query = { select: jest.fn().mockResolvedValue({ isAdmin: false }) };
+  const update = jest.spyOn(users.model, 'findByIdAndUpdate').mockReturnValue(query);
+  await users.setAdmin('507f1f77bcf86cd799439012', false);
+  expect(update).toHaveBeenCalledWith('507f1f77bcf86cd799439012', { isAdmin: false }, { returnDocument: 'after' });
+  expect(query.select).toHaveBeenCalledWith('username email isAdmin isBanned mustChangePassword');
 });

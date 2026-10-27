@@ -61,7 +61,7 @@ export default function AdminPage() {
 
   async function reset_password(event, user) {
     event.preventDefault();
-    if (!window.confirm(`Reset the password for ${user.username}? Existing sessions will stop working.`)) return;
+    if (!window.confirm(`Set a temporary password for ${user.username}? Existing sessions will stop working.`)) return;
     set_busy(true); set_error(''); set_notice('');
     try {
       const response = await fetch(`${API_URL}/api/admin/users/${user._id}/password`, {
@@ -72,7 +72,28 @@ export default function AdminPage() {
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Could not reset password.');
       set_passwords((previous) => ({ ...previous, [user._id]: '' }));
-      set_notice(`Password changed for ${user.username}. Share it privately; no email was sent.`);
+      set_users((previous) => previous.map((item) => item._id === user._id ? { ...item, mustChangePassword: true } : item));
+      set_notice(`Temporary password set for ${user.username}. Email it to them at ${user.email}; no email was sent from here. They will be offered a password change when they log in.`);
+    } catch (err) { set_error(err.message); }
+    finally { set_busy(false); }
+  }
+
+  async function toggle_admin(user) {
+    const question = user.isAdmin
+      ? `Remove admin rights from ${user.username}? They will lose access to this dashboard.`
+      : `Make ${user.username} an admin? They will have full access to this dashboard.`;
+    if (!window.confirm(question)) return;
+    set_busy(true); set_error(''); set_notice('');
+    try {
+      const response = await fetch(`${API_URL}/api/admin/users/${user._id}/admin`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ isAdmin: !user.isAdmin }),
+      });
+      const updated = await response.json();
+      if (!response.ok) throw new Error(updated.error || 'Could not change admin rights.');
+      set_users((previous) => previous.map((item) => item._id === updated._id ? updated : item));
+      set_notice(updated.isAdmin ? `${user.username} is now an admin.` : `${user.username} is no longer an admin.`);
     } catch (err) { set_error(err.message); }
     finally { set_busy(false); }
   }
@@ -115,6 +136,10 @@ export default function AdminPage() {
         </div>
         {selected && <div>
           <h3>{selected.subject || 'No subject'}</h3><p className="muted">From {selected.name} ({selected.email})</p>
+          {selected.subject === 'Password reset request' && <button className="btn" onClick={() => {
+            set_search(selected.name);
+            document.getElementById('users_title')?.scrollIntoView({ behavior: 'smooth' });
+          }}>Find {selected.name} in User Management</button>}
           <p className="admin_text">{selected.message}</p>
           {selected.reply && <div className="panel"><b>Saved response</b><p className="admin_text">{selected.reply}</p></div>}
           <form className="form_grid" onSubmit={respond}>
@@ -132,16 +157,22 @@ export default function AdminPage() {
       <input id="admin_search" className="input" value={search} placeholder="Username or email" onChange={(event) => set_search(event.target.value)} />
       <div className="list admin_section">
         {visible_users.map((user) => <div className="panel" key={user._id}>
-          <div className="row wrap"><b>{user.username}</b><span className="muted">{user.email}</span><span className="tag">{user.isAdmin ? 'Admin' : user.isBanned ? 'Banned' : 'Active'}</span></div>
-          {!user.isAdmin && <>
-            <form className="row wrap admin_section" onSubmit={(event) => reset_password(event, user)}>
-              <label htmlFor={`password_${user._id}`}>New password</label>
-              <input id={`password_${user._id}`} className="input" type="password" required minLength={8} maxLength={128} autoComplete="new-password"
-                value={passwords[user._id] || ''} onChange={(event) => set_passwords((previous) => ({ ...previous, [user._id]: event.target.value }))} />
-              <button className="btn small" disabled={busy}>Reset Password</button>
-            </form>
-            <button className="btn small danger admin_section" disabled={busy} onClick={() => toggle_ban(user)}>{user.isBanned ? 'Unban' : 'Ban'} User</button>
-          </>}
+          <div className="row wrap"><b>{user.username}</b><span className="muted">{user.email}</span><span className="tag">{user.isAdmin ? 'Admin' : user.isBanned ? 'Banned' : 'Active'}</span>{user.mustChangePassword && <span className="tag">Temporary password</span>}{user._id === player.id && <span className="tag cyan">You</span>}</div>
+          {!user.isAdmin && <form className="row wrap admin_section" onSubmit={(event) => reset_password(event, user)}>
+            <label htmlFor={`password_${user._id}`}>Temporary password</label>
+            <input id={`password_${user._id}`} className="input" type="password" required minLength={8} maxLength={128} autoComplete="new-password"
+              value={passwords[user._id] || ''} onChange={(event) => set_passwords((previous) => ({ ...previous, [user._id]: event.target.value }))} />
+            <button className="btn small" disabled={busy}>Set Temporary Password</button>
+          </form>}
+          {/* Admins cannot change their own rights, which keeps at least one admin */}
+          {user._id !== player.id && <div className="row wrap admin_section">
+            <label className="row">
+              <input type="checkbox" role="switch" checked={user.isAdmin} disabled={busy || (!user.isAdmin && user.isBanned)}
+                onChange={() => toggle_admin(user)} />
+              Admin rights{!user.isAdmin && user.isBanned && <span className="muted"> (unban first)</span>}
+            </label>
+            {!user.isAdmin && <button className="btn small danger" disabled={busy} onClick={() => toggle_ban(user)}>{user.isBanned ? 'Unban' : 'Ban'} User</button>}
+          </div>}
         </div>)}
         {!loading && visible_users.length === 0 && <p className="muted">No users match your search.</p>}
       </div>

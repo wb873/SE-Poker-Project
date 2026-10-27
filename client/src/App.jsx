@@ -9,6 +9,7 @@ import CreateLobbyPage from "./pages/create_lobby_page.jsx";
 import GameTablePage from "./pages/game_table_page.jsx";
 import ProfilePage from "./pages/profile_page.jsx";
 import FriendsPage from "./pages/friends_page.jsx";
+import LeaderboardPage from "./pages/leaderboard_page.jsx";
 import DisclaimerBanner from "./components/disclaimer_banner.jsx";
 import AdminPage from "./pages/admin_page.jsx";
 import ContactPage from './pages/contact_page.jsx';
@@ -47,6 +48,7 @@ export default function App() {
         <Route path="/table/:lobby_id" element={<RequireSession><GameTablePage /></RequireSession>} />
         <Route path="/profile" element={<RequireRegistered><ProfilePage /></RequireRegistered>} />
         <Route path="/friends" element={<RequireRegistered><FriendsPage /></RequireRegistered>} />
+        <Route path="/leaderboard" element={<RequireSession><LeaderboardPage /></RequireSession>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
       <DisclaimerBanner />

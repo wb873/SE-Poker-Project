@@ -164,7 +164,7 @@ test("throws when the game does not exist", () => {
     const game = createGame();
 
     expect(() => applyAction(getGame(game.gameId), "check")).toThrow(
-      "Choose either fold or raise."
+      "Choose fold, raise or swap."
     );
   });
 

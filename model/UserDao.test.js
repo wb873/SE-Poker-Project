@@ -98,6 +98,30 @@ dbTest("findByIdentifier finds a user by email, ignoring case", async () => {
   expect(found.username).toBe("willb");
 });
 
+dbTest("findByIdentifier finds a username ignoring case and keeps its original capitals", async () => {
+  await UserDao.create(userData({ username: "WillB" }));
+  const found = await UserDao.findByIdentifier("willb");
+  expect(found.username).toBe("WillB");
+});
+
+dbTest("findByUsername ignores case", async () => {
+  await UserDao.create(userData());
+  expect((await UserDao.findByUsername("WILLB")).email).toBe("will@example.com");
+  expect(await UserDao.findByUsername("nobody")).toBeNull();
+});
+
+dbTest("findByUsernameAndEmail ignores case and needs both to match", async () => {
+  await UserDao.create(userData());
+  expect((await UserDao.findByUsernameAndEmail("WillB", "WILL@example.com")).username).toBe("willb");
+  expect(await UserDao.findByUsernameAndEmail("willb", "other@example.com")).toBeNull();
+});
+
+dbTest("updatePassword can mark a password temporary and clears the mark otherwise", async () => {
+  const created = await UserDao.create(userData());
+  expect((await UserDao.updatePassword(created._id, "a:b", true)).mustChangePassword).toBe(true);
+  expect((await UserDao.updatePassword(created._id, "c:d")).mustChangePassword).toBe(false);
+});
+
 dbTest("findByIdentifier returns null for an unknown identifier", async () => {
   expect(await UserDao.findByIdentifier("nobody")).toBeNull();
 });

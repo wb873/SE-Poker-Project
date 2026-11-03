@@ -3,8 +3,7 @@ import { useNavigate } from "react-router-dom";
 import PageHeader from "../components/page_header.jsx";
 
 import { use_session } from "../session.jsx";
-
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
+import { API_URL } from "../api_config.js";
 
 // Create lobby form (stories L1, L4, L5, L6)
 export default function CreateLobbyPage() {

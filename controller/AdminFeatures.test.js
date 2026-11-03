@@ -1,6 +1,6 @@
 jest.mock('../model/UserDao', () => ({
   findById: jest.fn(), findByIdentifier: jest.fn(), listForAdmin: jest.fn(),
-  updatePassword: jest.fn(), setBanned: jest.fn(),
+  updatePassword: jest.fn(), setBanned: jest.fn(), setAdmin: jest.fn(), countAdmins: jest.fn(),
 }));
 jest.mock('../model/ContactDao', () => ({
   create: jest.fn(), readAll: jest.fn(), readMine: jest.fn(), respond: jest.fn(),
@@ -94,7 +94,25 @@ test('admins reset passwords using a hash and old sessions are rejected', async 
   const result = await request(`/admin/users/${player._id}/password`, await login(), 'PATCH', { newPassword: 'newSecret123' });
   expect(result.status).toBe(200);
   expect(passwords.verify('newSecret123', player.passwordHash)).toBe(true);
+  expect(users.updatePassword).toHaveBeenCalledWith(player._id, expect.any(String), true); // marked temporary
   expect((await request('/contacts/mine', oldToken)).status).toBe(401);
+});
+test('players can change their password and get a working new session', async () => {
+  const oldToken = await login('player');
+  users.updatePassword.mockImplementation(async (id, passwordHash) => { player.passwordHash = passwordHash; return player; });
+  contacts.readMine.mockResolvedValue([]);
+  const result = await request('/auth/change-password', oldToken, 'POST', { currentPassword: 'secret123', newPassword: 'mineNow456' });
+  expect(result.status).toBe(200);
+  expect(users.updatePassword).toHaveBeenCalledWith(player._id, expect.any(String));
+  expect(passwords.verify('mineNow456', player.passwordHash)).toBe(true);
+  expect((await request('/contacts/mine', oldToken)).status).toBe(401);
+  expect((await request('/contacts/mine', result.body.token)).status).toBe(200);
+});
+test('changing a password requires the current one and a signed-in player', async () => {
+  const token = await login('player');
+  expect((await request('/auth/change-password', token, 'POST', { currentPassword: 'wrong', newPassword: 'mineNow456' })).status).toBe(401);
+  expect((await request('/auth/change-password', null, 'POST', { currentPassword: 'secret123', newPassword: 'mineNow456' })).status).toBe(401);
+  expect(users.updatePassword).not.toHaveBeenCalled();
 });
 test('short passwords are rejected', async () => {
   expect((await request(`/admin/users/${player._id}/password`, await login(), 'PATCH', { newPassword: 'short' })).status).toBe(400);
@@ -114,6 +132,51 @@ test('admin accounts cannot be banned or reset using player tools', async () => 
   const token = await login();
   expect((await request(`/admin/users/${admin._id}/ban`, token, 'PATCH', { isBanned: true })).status).toBe(403);
   expect((await request(`/admin/users/${admin._id}/password`, token, 'PATCH', { newPassword: 'newSecret123' })).status).toBe(403);
+});
+test('admins can turn admin rights on and off for another account, effective immediately', async () => {
+  users.setAdmin.mockImplementation(async (id, isAdmin) => { player.isAdmin = isAdmin; return { _id: player._id, username: 'player', isAdmin }; });
+  users.countAdmins.mockResolvedValue(1);
+  users.listForAdmin.mockResolvedValue([]);
+  const playerToken = await login('player');
+  const adminToken = await login();
+  expect((await request('/admin/users', playerToken)).status).toBe(403);
+
+  const on = await request(`/admin/users/${player._id}/admin`, adminToken, 'PATCH', { isAdmin: true });
+  expect(on.status).toBe(200);
+  expect(on.body.isAdmin).toBe(true);
+  expect((await request('/admin/users', playerToken)).status).toBe(200);
+
+  const off = await request(`/admin/users/${player._id}/admin`, adminToken, 'PATCH', { isAdmin: false });
+  expect(off.status).toBe(200);
+  expect(off.body.isAdmin).toBe(false);
+  expect((await request('/admin/users', playerToken)).status).toBe(403);
+});
+test('admins can never change their own admin rights', async () => {
+  const token = await login();
+  expect((await request(`/admin/users/${admin._id}/admin`, token, 'PATCH', { isAdmin: false })).status).toBe(403);
+  expect(users.setAdmin).not.toHaveBeenCalled();
+});
+test('players cannot change anyone\'s admin rights', async () => {
+  const token = await login('player');
+  expect((await request(`/admin/users/${player._id}/admin`, token, 'PATCH', { isAdmin: true })).status).toBe(403);
+  expect((await request(`/admin/users/${player._id}/admin`, null, 'PATCH', { isAdmin: true })).status).toBe(401);
+  expect(users.setAdmin).not.toHaveBeenCalled();
+});
+test('admin toggle rejects bad input, banned players and unknown ids', async () => {
+  const token = await login();
+  expect((await request(`/admin/users/${player._id}/admin`, token, 'PATCH', {})).status).toBe(400);
+  expect((await request('/admin/users/not-an-id/admin', token, 'PATCH', { isAdmin: true })).status).toBe(404);
+  player.isBanned = true;
+  expect((await request(`/admin/users/${player._id}/admin`, token, 'PATCH', { isAdmin: true })).status).toBe(400);
+  expect(users.setAdmin).not.toHaveBeenCalled();
+});
+test('a removal that would leave no admins is undone', async () => {
+  const token = await login();
+  users.setAdmin.mockImplementation(async (id, isAdmin) => ({ _id: id, isAdmin }));
+  users.countAdmins.mockResolvedValue(0);
+  player.isAdmin = true;
+  expect((await request(`/admin/users/${player._id}/admin`, token, 'PATCH', { isAdmin: false })).status).toBe(409);
+  expect(users.setAdmin).toHaveBeenLastCalledWith(player._id, true);
 });
 test('logout revokes access', async () => {
   const token = await login();

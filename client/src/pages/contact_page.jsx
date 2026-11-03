@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import PageHeader from '../components/page_header.jsx';
 import { use_session } from '../session.jsx';
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+import { API_URL } from '../api_config.js';
 
 export default function ContactPage() {
   const { token } = use_session();

@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 const UserDao = require('./UserDao');
 const periods = require('../util/LeaderboardPeriod');
+const settingsDao = require('./LeaderboardSettingsDao');
 
 const monthlyStatsSchema = new mongoose.Schema({
     userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
@@ -20,11 +21,21 @@ exports.recordResult = async function(userId, netChips, settledAt = new Date()) 
     if (!(settledAt instanceof Date) || !Number.isFinite(settledAt.getTime())) throw new Error('A valid settlement date is required.');
     const user = await UserDao.findById(userId);
     if (!user || user.isBanned) throw new Error('An active registered user is required.');
-    return MonthlyStats.findOneAndUpdate(
-        { userId: user._id, month: periods.current(settledAt).month },
+    const settings = await settingsDao.read();
+    const month = periods.current(settledAt).month;
+    const buckets = [];
+    // Ignore delayed settlements from before an explicit reset/start.
+    if (settings.monthlyReset?.month !== month || settledAt >= new Date(settings.monthlyReset.startedAt)) {
+        buckets.push(settingsDao.monthlyBucket(settings, month));
+    }
+    if (settings.season?.bucket && settledAt >= new Date(settings.season.startedAt)) {
+        buckets.push(settings.season.bucket);
+    }
+    return Promise.all(buckets.map((bucket) => MonthlyStats.findOneAndUpdate(
+        { userId: user._id, month: bucket },
         { $inc: { netChips, handsPlayed: 1 } },
         { upsert: true, returnDocument: 'after', runValidators: true, setDefaultsOnInsert: true }
-    );
+    )));
 };
 
 exports.readMonthly = async function(month, userId = null) {
@@ -35,7 +46,10 @@ exports.readMonthly = async function(month, userId = null) {
         { $lookup: { from: UserDao.model.collection.name, localField: 'userId', foreignField: '_id', as: 'user' } },
         { $unwind: '$user' },
         { $match: { 'user.isBanned': { $ne: true } } },
-        { $setWindowFields: { sortBy: { netChips: -1, userId: 1 }, output: { rank: { $documentNumber: {} } } } },
+        // $documentNumber requires exactly one sort field. An object key keeps
+        // both chip order (descending) and the stable user-ID tie breaker.
+        { $set: { rankingOrder: { chips: { $multiply: ['$netChips', -1] }, userId: '$userId' } } },
+        { $setWindowFields: { sortBy: { rankingOrder: 1 }, output: { rank: { $documentNumber: {} } } } },
         { $sort: { rank: 1 } },
         { $project: { _id: 0, userId: { $toString: '$userId' }, username: '$user.username', netChips: 1, handsPlayed: 1, rank: 1 } },
         { $facet: {

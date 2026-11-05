@@ -1,5 +1,7 @@
 const users = require('./UserDao');
 const dao = require('./LeaderboardDao');
+const settings = require('./LeaderboardSettingsDao');
+beforeEach(() => jest.spyOn(settings, 'read').mockResolvedValue({ mode: 'monthly' }));
 const id = '507f1f77bcf86cd799439011';
 afterEach(() => jest.restoreAllMocks());
 
@@ -14,6 +16,35 @@ test.each([35, -30, 0])('records net result %s in the settlement month without c
         expect.objectContaining({ upsert: true, returnDocument: 'after' })
     );
     expect(accountUpdate).not.toHaveBeenCalled();
+});
+
+test('tracks monthly and seasonal results even when monthly is displayed', async () => {
+    jest.spyOn(users, 'findById').mockResolvedValue({ _id: id });
+    settings.read.mockResolvedValue({ mode: 'monthly', season: { bucket: 'season:winter', startedAt: new Date('2026-11-01T04:00:00Z') } });
+    const update = jest.spyOn(dao.model, 'findOneAndUpdate').mockResolvedValue({});
+    await dao.recordResult(id, -20, new Date('2026-11-04T12:00:00Z'));
+    expect(update.mock.calls.map(([filter]) => filter.month)).toEqual(['2026-11', 'season:winter']);
+});
+
+test('monthly reset uses a fresh bucket and excludes delayed pre-reset results', async () => {
+    jest.spyOn(users, 'findById').mockResolvedValue({ _id: id });
+    settings.read.mockResolvedValue({ monthlyReset: { month: '2026-11', bucket: 'monthly:reset', startedAt: new Date('2026-11-04T12:00:00Z') } });
+    const update = jest.spyOn(dao.model, 'findOneAndUpdate').mockResolvedValue({});
+    await dao.recordResult(id, 10, new Date('2026-11-04T11:59:59Z'));
+    expect(update).not.toHaveBeenCalled();
+    await dao.recordResult(id, 10, new Date('2026-11-04T12:00:00Z'));
+    expect(update.mock.calls[0][0].month).toBe('monthly:reset');
+    await dao.recordResult(id, 10, new Date('2026-12-01T05:00:00Z'));
+    expect(update.mock.calls[1][0].month).toBe('2026-12');
+});
+
+test('a newly started season never includes earlier settlements', async () => {
+    jest.spyOn(users, 'findById').mockResolvedValue({ _id: id });
+    settings.read.mockResolvedValue({ season: { bucket: 'season:new', startedAt: new Date('2026-11-05T12:00:00Z') } });
+    const update = jest.spyOn(dao.model, 'findOneAndUpdate').mockResolvedValue({});
+    await dao.recordResult(id, 10, new Date('2026-11-04T12:00:00Z'));
+    expect(update).toHaveBeenCalledTimes(1);
+    expect(update.mock.calls[0][0].month).toBe('2026-11');
 });
 
 test.each([null, { _id: id, isBanned: true }])('does not record results for missing or banned accounts', async (user) => {

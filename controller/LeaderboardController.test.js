@@ -1,15 +1,22 @@
 jest.mock('../model/LeaderboardDao', () => ({ readMonthly: jest.fn() }));
 jest.mock('../model/UserDao', () => ({ findById: jest.fn() }));
+jest.mock('../model/LeaderboardSettingsDao', () => ({
+    read: jest.fn(), monthlyBucket: jest.fn(), startSeason: jest.fn(), setMode: jest.fn(), reset: jest.fn(),
+    selectSeason: jest.fn(), deleteSeason: jest.fn(),
+}));
 const express = require('express');
 const dao = require('../model/LeaderboardDao');
 const users = require('../model/UserDao');
 const sessions = require('../util/AuthSession');
 const periods = require('../util/LeaderboardPeriod');
+const settings = require('../model/LeaderboardSettingsDao');
 let server, base;
 const player = { _id: '507f1f77bcf86cd799439011', passwordHash: 'test-hash' };
 beforeAll(async () => {
     const app = express();
+    app.use(express.json());
     app.use('/api/leaderboard', require('../routes/leaderboard_routes'));
+    app.use('/api/admin', require('../routes/admin_routes'));
     server = await new Promise((resolve) => {
         const instance = app.listen(0, '127.0.0.1', () => resolve(instance));
     });
@@ -20,13 +27,86 @@ beforeEach(() => {
     jest.resetAllMocks();
     users.findById.mockResolvedValue(player);
     dao.readMonthly.mockResolvedValue({ topPlayers: [], currentPlayer: null });
+    settings.read.mockResolvedValue({ mode: 'monthly' });
+    settings.monthlyBucket.mockImplementation((config, month) => month);
 });
 test('guests can read rankings but cannot request another account personal rank', async () => {
     const response = await fetch(`${base}?userId=${player._id}`);
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ ...periods.current(), topPlayers: [], currentPlayer: null });
+    expect(await response.json()).toEqual({ ...periods.current(), mode: 'monthly', topPlayers: [], currentPlayer: null });
     expect(dao.readMonthly).toHaveBeenCalledWith(periods.current().month, undefined);
     expect(users.findById).not.toHaveBeenCalled();
+});
+
+test('public leaderboard follows the selected season and custom label', async () => {
+    settings.read.mockResolvedValue({ mode: 'seasonal', season: { name: 'Winter Cup', bucket: 'season:winter' } });
+    const response = await fetch(base);
+    expect(await response.json()).toEqual(expect.objectContaining({ mode: 'seasonal', label: 'Winter Cup' }));
+    expect(dao.readMonthly).toHaveBeenCalledWith('season:winter', undefined);
+});
+
+async function adminRequest(body, role = 'admin') {
+    const user = { ...player, isAdmin: role === 'admin' };
+    users.findById.mockResolvedValue(user);
+    return fetch(base.replace('/leaderboard', '/admin/leaderboard'), {
+        method: body ? 'PATCH' : 'GET',
+        headers: { 'Content-Type': 'application/json', ...(role === 'anonymous' ? {} : { Authorization: `Bearer ${sessions.create(user)}` }) },
+        ...(body ? { body: JSON.stringify(body) } : {}),
+    });
+}
+
+test.each(['anonymous', 'player'])('rejects %s reading settings or resetting standings', async (role) => {
+    const expected = role === 'anonymous' ? 401 : 403;
+    expect((await adminRequest(null, role)).status).toBe(expected);
+    expect((await adminRequest({ action: 'reset', target: 'monthly' }, role)).status).toBe(expected);
+    expect(settings.reset).not.toHaveBeenCalled();
+});
+
+test('admins can inspect settings and start a trimmed custom season', async () => {
+    expect((await adminRequest()).status).toBe(200);
+    settings.startSeason.mockResolvedValue({ mode: 'seasonal', season: { name: 'Winter Cup' } });
+    const response = await adminRequest({ action: 'start-season', name: ' Winter Cup ' });
+    expect(response.status).toBe(200);
+    expect(settings.startSeason).toHaveBeenCalledWith('Winter Cup');
+});
+
+test.each(['monthly', 'seasonal'])('admin can switch to %s or independently reset it', async (mode) => {
+    settings.setMode.mockResolvedValue({ mode });
+    settings.reset.mockResolvedValue({ mode: 'monthly' });
+    expect((await adminRequest({ action: 'set-mode', mode })).status).toBe(200);
+    expect(settings.setMode).toHaveBeenCalledWith(mode);
+    const seasonId = mode === 'seasonal' ? 'saved-season' : undefined;
+    expect((await adminRequest({ action: 'reset', target: mode, seasonId })).status).toBe(200);
+    expect(settings.reset).toHaveBeenCalledWith(mode, seasonId);
+});
+
+test.each([
+    { action: 'start-season', name: ' ' }, { action: 'start-season', name: 'x'.repeat(61) },
+    { action: 'set-mode', mode: 'invalid' }, { action: 'reset', target: 'all' }, { action: 'invalid' },
+    { action: 'select-season' }, { action: 'delete-season', seasonId: 123 }, { action: 'reset', target: 'seasonal' },
+])('rejects invalid admin input %j', async (body) => {
+    expect((await adminRequest(body)).status).toBe(400);
+    expect(settings.startSeason).not.toHaveBeenCalled();
+    expect(settings.setMode).not.toHaveBeenCalled();
+    expect(settings.reset).not.toHaveBeenCalled();
+});
+
+test.each(['select-season', 'delete-season'])('admins can %s by ID; ordinary users cannot', async (action) => {
+    const method = action === 'select-season' ? settings.selectSeason : settings.deleteSeason;
+    method.mockResolvedValue({ mode: 'monthly', seasons: [] });
+    expect((await adminRequest({ action, seasonId: 'saved-id' }, 'player')).status).toBe(403);
+    expect(method).not.toHaveBeenCalled();
+    expect((await adminRequest({ action, seasonId: 'saved-id' })).status).toBe(200);
+    expect(method).toHaveBeenCalledWith('saved-id');
+    method.mockRejectedValue(Object.assign(new Error('Saved season not found.'), { status: 404 }));
+    expect((await adminRequest({ action, seasonId: 'deleted-id' })).status).toBe(404);
+});
+
+test('returns a conflict when no season exists and handles database errors', async () => {
+    settings.setMode.mockRejectedValue(Object.assign(new Error('Start a season first.'), { status: 409 }));
+    expect((await adminRequest({ action: 'set-mode', mode: 'seasonal' })).status).toBe(409);
+    settings.reset.mockRejectedValue(new Error('offline'));
+    expect((await adminRequest({ action: 'reset', target: 'monthly' })).status).toBe(500);
 });
 test.each([3, 14])('returns authenticated personal rank %s alongside the top ten', async (rank) => {
     const topPlayers = Array.from({ length: 10 }, (_, i) => ({ userId: `${i}`, rank: i + 1, username: `Player${i}`, netChips: 100 - i }));

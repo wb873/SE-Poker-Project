@@ -46,7 +46,7 @@ export function SessionProvider({ children }) {
       method: 'POST', headers: { Authorization: `Bearer ${token}` },
     }).catch(() => {});
     set_token(null);
-    set_player({ username: "Guest", is_guest: true, is_admin: false });
+    set_player({ username: `Guest${Math.floor(1000 + Math.random() * 9000)}`, is_guest: true, is_admin: false });
     set_balance(1000);
   }
 

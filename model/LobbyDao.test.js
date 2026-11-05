@@ -159,3 +159,28 @@ describe("deleteAll", () => {
     expect(await LobbyDao.findPublic()).toEqual([]);
   });
 });
+
+describe("addPlayer", () => {
+  dbTest("adds a player until the lobby is full", async () => {
+    const lobby = await LobbyDao.create(lobbyData({ maxPlayers: 2, players: ["host1"] }));
+    const id = String(lobby._id);
+
+    const joined = await LobbyDao.addPlayer(id, "bob");
+    expect(joined.players).toEqual(["host1", "bob"]);
+
+    expect(await LobbyDao.addPlayer(id, "carol")).toBeNull(); // full
+  });
+
+  dbTest("does not add the same player twice", async () => {
+    const lobby = await LobbyDao.create(lobbyData());
+    expect(await LobbyDao.addPlayer(String(lobby._id), "host1")).toBeNull();
+  });
+
+  dbTest("counts bots as taken seats", async () => {
+    const lobby = await LobbyDao.create(
+      lobbyData({ maxPlayers: 3, bots: { enabled: true, amount: 1, difficulty: "easy" } })
+    );
+    expect((await LobbyDao.addPlayer(String(lobby._id), "bob")).players).toHaveLength(2);
+    expect(await LobbyDao.addPlayer(String(lobby._id), "carol")).toBeNull();
+  });
+});

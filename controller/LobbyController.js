@@ -10,8 +10,19 @@ function hashPassword(password) {
   return `${salt}:${hash}`;
 }
 
+// Checks a password against the "salt:hash" string made by hashPassword
+function verifyPassword(password, stored) {
+  if (typeof password !== "string" || typeof stored !== "string") return false;
+  const [salt, hash] = stored.split(":");
+  if (!salt || !hash) return false;
+  const expected = Buffer.from(hash, "hex");
+  const actual = crypto.scryptSync(password, salt, 64);
+  return expected.length === actual.length && crypto.timingSafeEqual(expected, actual);
+}
+
 // Never includes the password hash
 function toPublicLobby(lobby) {
+  const botSeats = lobby.bots?.enabled ? lobby.bots.amount : 0;
   return {
     id: String(lobby._id),
     name: lobby.name,
@@ -19,6 +30,8 @@ function toPublicLobby(lobby) {
     isPrivate: lobby.isPrivate,
     maxPlayers: lobby.maxPlayers,
     playerCount: lobby.players.length,
+    players: [...lobby.players],
+    openSeats: Math.max(0, lobby.maxPlayers - lobby.players.length - botSeats),
     ante: lobby.ante,
     turnTimer: lobby.turnTimer,
     sideBets: lobby.sideBets,
@@ -94,5 +107,37 @@ exports.getLobby = async function (req, res) {
     res.json({ success: true, lobby: toPublicLobby(lobby) });
   } catch (err) {
     res.status(500).json({ success: false, error: "Could not load lobby." });
+  }
+};
+
+// POST /api/lobbies/:id/join   Body: { username, password? }
+exports.joinLobby = async function (req, res) {
+  const { username, password } = req.body ?? {};
+
+  if (typeof username !== "string" || !username.trim() || username.trim().length > 20)
+    return res.status(400).json({ success: false, error: "A username of 1-20 characters is required." });
+  const name = username.trim();
+
+  try {
+    const lobby = await LobbyDao.findById(req.params.id);
+    if (!lobby) return res.status(404).json({ success: false, error: "Lobby not found." });
+
+    if (lobby.isPrivate && !verifyPassword(password, lobby.passwordHash))
+      return res.status(403).json({ success: false, error: "Incorrect lobby password." });
+
+    // Rejoining a table you are already seated at is allowed and changes nothing
+    if (lobby.players.includes(name))
+      return res.json({ success: true, lobby: toPublicLobby(lobby) });
+
+    if (lobby.status !== "waiting")
+      return res.status(409).json({ success: false, error: "That game has already started." });
+
+    const updated = await LobbyDao.addPlayer(lobby._id, name);
+    if (!updated)
+      return res.status(409).json({ success: false, error: "That lobby is full." });
+
+    res.json({ success: true, lobby: toPublicLobby(updated) });
+  } catch (err) {
+    res.status(500).json({ success: false, error: "Could not join lobby." });
   }
 };

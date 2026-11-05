@@ -44,6 +44,9 @@ export default function GameTablePage() {
   // When true, clicking one of your cards swaps it (costs 2x ante, once per hand).
   const [swap_mode, set_swap_mode] = useState(false);
 
+  const [lobby, set_lobby] = useState(null);
+  const saved_game_key = `game_${lobby_id}`;
+
   const [chat_input, set_chat_input] = useState("");
   const [chat_log, set_chat_log] = useState([
     { user: "System", text: "Welcome to Caribbean Stud Poker!" },
@@ -58,7 +61,7 @@ export default function GameTablePage() {
       const response = await fetch(`${API_URL}/api/game/start`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ante: 10 }),
+        body: JSON.stringify({ ante: lobby?.ante ?? 10 }),
       });
 
       const data = await response.json();
@@ -175,6 +178,33 @@ export default function GameTablePage() {
     }
   }
 
+  // Load this table's lobby info (name, players, ante, settings)
+  useEffect(() => {
+    let active = true;
+    async function load_lobby() {
+      try {
+        const response = await fetch(`${API_URL}/api/lobbies/${encodeURIComponent(lobby_id)}`);
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "Could not load the lobby.");
+        if (active) set_lobby(data.lobby);
+      } catch (err) {
+        if (active) set_error(err.message);
+      }
+    }
+    load_lobby();
+    return () => { active = false; };
+  }, [lobby_id]);
+
+  // Remember this table's game so a refresh reloads the current state from the server
+  useEffect(() => {
+    const saved_id = sessionStorage.getItem(saved_game_key);
+    if (saved_id) load_game(saved_id);
+  }, [saved_game_key]);
+
+  useEffect(() => {
+    if (game?.gameId) sessionStorage.setItem(saved_game_key, game.gameId);
+  }, [game?.gameId, saved_game_key]);
+
   // Reset the local timer for each new decision.
   useEffect(() => {
     if (game?.phase !== "decision" || is_spectator) return;
@@ -257,6 +287,20 @@ export default function GameTablePage() {
           >
             Dismiss
           </button>
+        </div>
+      )}
+
+      {lobby && (
+        <div className="panel" style={{ marginBottom: 10 }}>
+          <b>{lobby.name}</b> <span className="muted">(Host: {lobby.host})</span>
+          <div className="muted" style={{ fontSize: 13 }}>
+            Lobby code: {lobby.id}
+          </div>
+          <div className="muted" style={{ fontSize: 13 }}>
+            Players: {lobby.players.join(", ")} · Ante ${lobby.ante} · {lobby.turnTimer}s timer ·
+            Side bets: {lobby.sideBets ? "Yes" : "No"} ·
+            Bots: {lobby.bots?.enabled ? `${lobby.bots.amount} (${lobby.bots.difficulty})` : "No"}
+          </div>
         </div>
       )}
 
@@ -380,6 +424,8 @@ export default function GameTablePage() {
             {game && (
               <div className="muted">
                 Ante: ${game.ante} · Raise: ${game.raiseAmount}
+                <br />
+                Phase: {game.phase} · Swap: {game.swapUsed ? "used" : `available ($${game.swapCost})`}
               </div>
             )}
           </div>
@@ -425,8 +471,17 @@ export default function GameTablePage() {
                 <p>Dealer hand: {game.dealerHandRank}</p>
               )}
 
-              {game.result && <p>Result: {game.result}</p>}
-            </div>
+              {game.result && (
+                <p>
+                  Result: {{
+                    win: "You won",
+                    loss: "Dealer won",
+                    push: "Push (tie)",
+                    fold: "You folded",
+                    dealer_not_qualified: "Dealer did not qualify",
+                  }[game.result] ?? game.result}
+                </p>
+              )}            </div>
           )}
 
           {!is_spectator && game && (

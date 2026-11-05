@@ -56,3 +56,24 @@ exports.addPlayer = (id, username) => {
     { returnDocument: "after" }
   ).lean();
 };
+
+// Removes a human player. If the host leaves, the next player becomes host.
+exports.removePlayer = async (id, username) => {
+  if (!mongoose.isValidObjectId(id)) return null;
+  const updated = await Lobby.findOneAndUpdate(
+    { _id: id, players: username },
+    { $pull: { players: username } },
+    { returnDocument: "after" }
+  ).lean();
+  if (updated && updated.host === username && updated.players.length > 0) {
+    return Lobby.findByIdAndUpdate(id, { host: updated.players[0] }, { returnDocument: "after" }).lean();
+  }
+  return updated;
+};
+
+exports.deleteById = (id) => {
+  if (!mongoose.isValidObjectId(id)) return Promise.resolve(null);
+  return Lobby.findByIdAndDelete(id).lean();
+};
+
+exports.findAll = () => Lobby.find({}).lean();

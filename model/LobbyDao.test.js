@@ -184,3 +184,30 @@ describe("addPlayer", () => {
     expect(await LobbyDao.addPlayer(String(lobby._id), "carol")).toBeNull();
   });
 });
+
+describe("removePlayer and deleteById", () => {
+  dbTest("removes a player", async () => {
+    const lobby = await LobbyDao.create(lobbyData({ players: ["host1", "bob"] }));
+    const updated = await LobbyDao.removePlayer(String(lobby._id), "bob");
+    expect(updated.players).toEqual(["host1"]);
+  });
+
+  dbTest("passes host to the next player when the host leaves", async () => {
+    const lobby = await LobbyDao.create(lobbyData({ players: ["host1", "bob"] }));
+    const updated = await LobbyDao.removePlayer(String(lobby._id), "host1");
+    expect(updated.host).toBe("bob");
+    expect(updated.players).toEqual(["bob"]);
+  });
+
+  dbTest("returns null for a player who isn't in the lobby", async () => {
+    const lobby = await LobbyDao.create(lobbyData());
+    expect(await LobbyDao.removePlayer(String(lobby._id), "stranger")).toBeNull();
+  });
+
+  dbTest("deleteById removes the lobby and ignores malformed ids", async () => {
+    const lobby = await LobbyDao.create(lobbyData());
+    await LobbyDao.deleteById(String(lobby._id));
+    expect(await LobbyDao.findById(String(lobby._id))).toBeNull();
+    expect(await LobbyDao.deleteById("not-an-id")).toBeNull();
+  });
+});

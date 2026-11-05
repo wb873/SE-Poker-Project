@@ -2,6 +2,7 @@ import React from "react";
 import { useNavigate } from "react-router-dom";
 import { use_session } from "../session.jsx";
 import { mock_lobbies, mock_friends } from "../mock_data.js";
+import MonthlyLeaderboard from '../components/monthly_leaderboard.jsx';
 
 // Main menu: navigation, welcome/balance, quick-join lobbies, friends online
 export default function MainMenuPage() {
@@ -38,7 +39,6 @@ export default function MainMenuPage() {
           <button className="btn" disabled={is_guest} onClick={() => navigate("/friends")}>Friends</button>
           <button className="btn" disabled={is_guest} onClick={() => navigate('/contact')}>Contact Admin</button>
           {player.is_admin && <button className="btn" onClick={() => navigate('/admin')}>Admin Dashboard</button>}
-          <button className="btn" onClick={() => navigate("/leaderboard")}>Leaderboard</button>
           <button className="btn" onClick={() => navigate("/tutorial")}>Tutorial</button>
         </div>
 
@@ -68,7 +68,8 @@ export default function MainMenuPage() {
           </div>
         </div>
 
-        <div className="panel">
+        <aside className="menu_sidebar">
+          <div className="panel">
           <h3>Friends Online</h3>
           {is_guest ? (
             <p className="muted">Log in to see your friends.</p>
@@ -82,7 +83,9 @@ export default function MainMenuPage() {
             </div>
           )}
           {player.is_admin && <p className="tag cyan" style={{ marginTop: 20 }}>Admin controls coming soon</p>}
-        </div>
+          </div>
+          <MonthlyLeaderboard key={player.id || 'guest'} />
+        </aside>
       </div>
     </div>
   );

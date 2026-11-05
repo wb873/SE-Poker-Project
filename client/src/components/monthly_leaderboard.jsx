@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { API_URL } from '../api_config.js';
 import { use_session } from '../session.jsx';
+import { Link } from 'react-router-dom';
+import { fetchLeaderboard } from '../leaderboard_api.mjs';
 
 export default function MonthlyLeaderboard() {
   const { player, token } = use_session();
@@ -16,12 +18,7 @@ export default function MonthlyLeaderboard() {
       if (pending) return;
       pending = true;
       try {
-        const response = await fetch(`${API_URL}/api/leaderboard`, {
-          signal: controller.signal,
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
-        });
-        const result = await response.json();
-        if (!response.ok) throw new Error(result.error || 'Could not load the leaderboard.');
+        const result = await fetchLeaderboard(API_URL, token, controller.signal);
         set_data(result);
         set_error('');
       } catch (err) {
@@ -52,19 +49,20 @@ export default function MonthlyLeaderboard() {
   }
 
   return <section id="monthly-leaderboard" className="panel monthly_leaderboard" aria-labelledby="leaderboard_title" tabIndex={-1}>
-    <h2 id="leaderboard_title">Leaderboard</h2>
-    <p className="muted"><small>Monthly leaderboard · Eastern time <br />
+    <h2 id="leaderboard_title">{data ? (data.mode === 'seasonal' ? data.label : 'Monthly Leaderboard') : 'Leaderboard'}</h2>
+    <p className="muted"><small>{data && (data.mode === 'seasonal' ? data.label : `${data.label} · Eastern time`)} <br />
       Ranked by net chips won.</small></p>
     {loading && <p role="status">Loading rankings...</p>}
     {error && <p className="error_text" role="alert">{error}</p>}
     {data && <>
       {data.topPlayers.length > 0 ? <table className="leaderboard_table">
-        <caption className="muted">Monthly net chips</caption>
+        <caption className="muted">{data.mode === 'seasonal' ? data.label : 'Monthly'} net chips</caption>
         <thead><tr><th scope="col">Rank</th><th scope="col">Player</th><th scope="col">Chips</th></tr></thead>
         <tbody>{data.topPlayers.map(row)}</tbody>
         {data.currentPlayer?.rank > 10 && <tbody className="leaderboard_personal">{row(data.currentPlayer)}</tbody>}
-      </table> : <p className="muted">No ranked players yet this month.</p>}
-      {!player.is_guest && !data.currentPlayer && <p className="muted">You are unranked this month. Complete a tracked hand to enter the rankings.</p>}
+      </table> : <p className="muted">No ranked players yet this {data.mode === 'seasonal' ? 'season' : 'month'}.</p>}
+      {data.sessionExpired && <p className="muted" role="status">Public rankings are shown. Your session has expired. <Link to="/">Sign in again</Link> to see your personal ranking.</p>}
+      {!player.is_guest && !data.sessionExpired && !data.currentPlayer && <p className="muted">You are unranked this {data.mode === 'seasonal' ? 'season' : 'month'}. Complete a tracked hand to enter the rankings.</p>}
       {player.is_guest && <p className="muted">Registered players only. Sign in to earn a ranking.</p>}
     </>}
     <button className="btn small" disabled={loading} onClick={() => { set_loading(true); set_refresh((value) => value + 1); }}>Refresh rankings</button>

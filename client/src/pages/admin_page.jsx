@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { use_session } from '../session.jsx';
 import { API_URL } from '../api_config.js';
+import LeaderboardAdmin from '../components/leaderboard_admin.jsx';
 
 export default function AdminPage() {
   const navigate = useNavigate();
@@ -124,6 +125,7 @@ export default function AdminPage() {
     {loading && <p role="status">Loading messages and users...</p>}
     {error && <p className="error_text" role="alert">{error}</p>}
     {notice && <p className="panel" role="status">{notice}</p>}
+    <LeaderboardAdmin token={token} refresh={refresh} />
     <section className="panel admin_section" aria-labelledby="contact_title">
       <h2 id="contact_title">Contact Messages</h2>
       {!loading && contacts.length === 0 && <p className="muted">No contact messages.</p>}

@@ -1,6 +1,7 @@
 import React from "react";
 import { useNavigate } from "react-router-dom";
 import { use_session } from "../session.jsx";
+import OutOfChips from "../components/out_of_chips.jsx";
 import { mock_lobbies, mock_friends } from "../mock_data.js";
 
 // Main menu: navigation, welcome/balance, quick-join lobbies, friends online
@@ -48,6 +49,7 @@ export default function MainMenuPage() {
             <div className="balance_chip" style={{ display: "inline-block" }}>Balance: ${balance.toLocaleString()}</div>
             {is_guest && <p className="muted">Guest balances are not saved. Create an account to keep your progress.</p>}
           </div>
+          <OutOfChips />
 
           <div className="panel">
             <h3>Available Lobbies (Quick Join)</h3>

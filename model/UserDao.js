@@ -10,6 +10,7 @@ const userSchema = new mongoose.Schema(
     passwordHash: { type: String, required: true },
     avatar: { type: String, default: "default" },
     balance: { type: Number, min: 0, default: 10000 },
+    lastAdRewardAt: { type: Date, default: null }, // when the last ad reward was paid (M2)
     isAdmin: { type: Boolean, default: false },
     isBanned: { type: Boolean, default: false },
     // Set when an admin picks a temporary password (P4); the player is offered
@@ -86,6 +87,21 @@ exports.refillBalance = (id, below, amount) => User.findOneAndUpdate(
   { $inc: { balance: amount } },
   { returnDocument: 'after' }
 ).select('balance');
+
+// Pays an ad reward to a broke player who is past the cooldown. Like
+// refillBalance, all the checks are in the update, so it can't pay twice (M2)
+exports.claimAdReward = (id, below, amount, cooldownMs) => {
+  const now = new Date();
+  return User.findOneAndUpdate(
+    {
+      _id: id,
+      balance: { $lt: below },
+      $or: [{ lastAdRewardAt: null }, { lastAdRewardAt: { $lte: new Date(now.getTime() - cooldownMs) } }],
+    },
+    { $inc: { balance: amount }, $set: { lastAdRewardAt: now } },
+    { returnDocument: 'after' }
+  ).select('balance');
+};
 
 exports.deleteAll = () => User.deleteMany({}); // tests only
 

@@ -184,3 +184,38 @@ dbTest("a double click only pays out once", async () => {
   expect(results.filter(Boolean)).toHaveLength(1);
   expect((await UserDao.findById(created._id)).balance).toBe(1000);
 });
+
+dbTest("claimAdReward pays a broke player who has never watched an ad", async () => {
+  const created = await UserDao.create(userData({ balance: 0 }));
+  const updated = await UserDao.claimAdReward(created._id, 10, 1000, 300000);
+  expect(updated.balance).toBe(1000);
+  expect((await UserDao.findById(created._id)).lastAdRewardAt).toBeInstanceOf(Date);
+});
+
+dbTest("claimAdReward refuses during the cooldown", async () => {
+  const created = await UserDao.create(userData({ balance: 0, lastAdRewardAt: new Date() }));
+  expect(await UserDao.claimAdReward(created._id, 10, 1000, 300000)).toBeNull();
+  expect((await UserDao.findById(created._id)).balance).toBe(0);
+});
+
+dbTest("claimAdReward pays again once the cooldown has passed", async () => {
+  const sixMinutesAgo = new Date(Date.now() - 360000);
+  const created = await UserDao.create(userData({ balance: 0, lastAdRewardAt: sixMinutesAgo }));
+  const updated = await UserDao.claimAdReward(created._id, 10, 1000, 300000);
+  expect(updated.balance).toBe(1000);
+});
+
+dbTest("claimAdReward refuses a player who can afford the ante", async () => {
+  const created = await UserDao.create(userData({ balance: 10 }));
+  expect(await UserDao.claimAdReward(created._id, 10, 1000, 300000)).toBeNull();
+});
+
+dbTest("a double click only pays one ad reward", async () => {
+  const created = await UserDao.create(userData({ balance: 0 }));
+  const results = await Promise.all([
+    UserDao.claimAdReward(created._id, 10, 1000, 300000),
+    UserDao.claimAdReward(created._id, 10, 1000, 300000),
+  ]);
+  expect(results.filter(Boolean)).toHaveLength(1);
+  expect((await UserDao.findById(created._id)).balance).toBe(1000);
+});

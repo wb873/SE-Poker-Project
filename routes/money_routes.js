@@ -8,5 +8,6 @@ const router = express.Router();
 router.use(requireUser);
 
 router.post("/refill", MoneyController.refill);
+router.post("/ad-reward", MoneyController.adReward);
 
 module.exports = router;

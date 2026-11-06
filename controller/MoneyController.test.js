@@ -1,5 +1,5 @@
 jest.mock('../model/UserDao', () => ({
-  findById: jest.fn(), findByIdentifier: jest.fn(), refillBalance: jest.fn(),
+  findById: jest.fn(), findByIdentifier: jest.fn(), refillBalance: jest.fn(), claimAdReward: jest.fn(),
 }));
 const express = require('express');
 const users = require('../model/UserDao');
@@ -40,7 +40,7 @@ test('a broke player gets chips and sees the new balance', async () => {
   const result = await refill(await login());
   expect(result.status).toBe(200);
   expect(result.body.balance).toBe(1005);
-  expect(users.refillBalance).toHaveBeenCalledWith(player._id, 10, 1000);
+  expect(users.refillBalance).toHaveBeenCalledWith(player._id, 10, 500);
 });
 test('a player who is not broke is refused', async () => {
   users.refillBalance.mockResolvedValue(null);
@@ -54,4 +54,48 @@ test('a database failure returns 500', async () => {
   const token = await login();
   users.refillBalance.mockRejectedValue(new Error('offline'));
   expect((await refill(token)).status).toBe(500);
+});
+async function watchAd(token) {
+  const response = await fetch(`${base}/money/ad-reward`, {
+    method: 'POST', headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  return { status: response.status, body: await response.json() };
+}
+
+test('a broke player gets paid for watching an ad', async () => {
+  users.claimAdReward.mockResolvedValue({ balance: 1005 });
+  const result = await watchAd(await login());
+  expect(result.status).toBe(200);
+  expect(result.body.balance).toBe(1005);
+  expect(users.claimAdReward).toHaveBeenCalledWith(player._id, 10, 1000, 300000);
+});
+test('a player who can afford the ante gets a 409', async () => {
+  users.claimAdReward.mockResolvedValue(null);
+  player.balance = 5000;
+  expect((await watchAd(await login())).status).toBe(409);
+});
+test('a player on cooldown gets a 429 with the time left', async () => {
+  users.claimAdReward.mockResolvedValue(null);
+  player.balance = 0;
+  player.lastAdRewardAt = new Date(Date.now() - 60000);
+  const result = await watchAd(await login());
+  expect(result.status).toBe(429);
+  expect(result.body.retryAfterSeconds).toBeGreaterThan(0);
+  expect(result.body.retryAfterSeconds).toBeLessThanOrEqual(240);
+});
+test('the second click of a double click gets a 429, not a crash', async () => {
+  users.claimAdReward.mockResolvedValue(null);
+  player.balance = 0;
+  const result = await watchAd(await login());
+  expect(result.status).toBe(429);
+  expect(result.body.retryAfterSeconds).toBe(300);
+});
+test('guests cannot claim an ad reward', async () => {
+  expect((await watchAd(null)).status).toBe(401);
+  expect(users.claimAdReward).not.toHaveBeenCalled();
+});
+test('a database failure on an ad reward returns 500', async () => {
+  const token = await login();
+  users.claimAdReward.mockRejectedValue(new Error('offline'));
+  expect((await watchAd(token)).status).toBe(500);
 });

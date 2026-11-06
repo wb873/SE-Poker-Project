@@ -84,7 +84,11 @@ exports.deleteAll = () => User.deleteMany({}); // tests only
 exports.model = User;
 
 // Admin operations never return password hashes.
-exports.listForAdmin = () => User.find().select('username email isAdmin isBanned mustChangePassword').sort({ username: 1 }).lean();
-exports.setBanned = (id, isBanned) => User.findByIdAndUpdate(id, { isBanned }, { returnDocument: 'after' }).select('username email isAdmin isBanned');
-exports.setAdmin = (id, isAdmin) => User.findByIdAndUpdate(id, { isAdmin }, { returnDocument: 'after' }).select('username email isAdmin isBanned mustChangePassword');
+const ADMIN_FIELDS = 'username email balance isAdmin isBanned mustChangePassword';
+
+exports.listForAdmin = () => User.find().select(ADMIN_FIELDS).sort({ username: 1 }).lean();
+exports.setBanned = (id, isBanned) => User.findByIdAndUpdate(id, { isBanned }, { returnDocument: 'after' }).select(ADMIN_FIELDS);
+exports.setAdmin = (id, isAdmin) => User.findByIdAndUpdate(id, { isAdmin }, { returnDocument: 'after' }).select(ADMIN_FIELDS);
 exports.countAdmins = () => User.countDocuments({ isAdmin: true });
+// $inc adds on the database side, so a hand finishing at the same moment isn't overwritten (A7)
+exports.addBalance = (id, amount) => User.findByIdAndUpdate(id, { $inc: { balance: amount } }, { returnDocument: 'after' }).select(ADMIN_FIELDS);

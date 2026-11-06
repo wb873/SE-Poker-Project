@@ -33,6 +33,7 @@ app.use("/api/lobbies", lobbyRoutes);
 app.use("/api/auth", userRoutes);
 app.use('/api/contacts', require('./routes/contact_routes'));
 app.use('/api/admin', require('./routes/admin_routes'));
+app.use('/api/money', require('./routes/money_routes'));
 
 io.on("connection", (socket) => {
   console.log(`Socket connected: ${socket.id}`);

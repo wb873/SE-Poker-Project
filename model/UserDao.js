@@ -79,6 +79,14 @@ exports.updatePassword = (id, passwordHash, temporary = false) => {
   );
 };
 
+// Free refill for a broke player. The balance check is part of the update, so a
+// double click can't pay out twice. Returns null if the player isn't broke (M1)
+exports.refillBalance = (id, below, amount) => User.findOneAndUpdate(
+  { _id: id, balance: { $lt: below } },
+  { $inc: { balance: amount } },
+  { returnDocument: 'after' }
+).select('balance');
+
 exports.deleteAll = () => User.deleteMany({}); // tests only
 
 exports.model = User;

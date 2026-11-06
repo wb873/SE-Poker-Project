@@ -162,3 +162,25 @@ dbTest("deleteAll removes every user", async () => {
   await UserDao.deleteAll();
   expect(await UserDao.findByIdentifier("willb")).toBeNull();
 });
+
+dbTest("refillBalance adds chips to a broke player", async () => {
+  const created = await UserDao.create(userData({ balance: 0 }));
+  const updated = await UserDao.refillBalance(created._id, 10, 1000);
+  expect(updated.balance).toBe(1000);
+});
+
+dbTest("refillBalance does nothing once the player can afford the ante", async () => {
+  const created = await UserDao.create(userData({ balance: 10 }));
+  expect(await UserDao.refillBalance(created._id, 10, 1000)).toBeNull();
+  expect((await UserDao.findById(created._id)).balance).toBe(10);
+});
+
+dbTest("a double click only pays out once", async () => {
+  const created = await UserDao.create(userData({ balance: 0 }));
+  const results = await Promise.all([
+    UserDao.refillBalance(created._id, 10, 1000),
+    UserDao.refillBalance(created._id, 10, 1000),
+  ]);
+  expect(results.filter(Boolean)).toHaveLength(1);
+  expect((await UserDao.findById(created._id)).balance).toBe(1000);
+});

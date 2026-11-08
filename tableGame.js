@@ -32,6 +32,7 @@ function getOrCreateTable(lobby) {
       deadline: null,
       timer: null,
       seats: new Map(), // username -> seat
+      unsaved: [], // { userId, net } results waiting to be saved to accounts
     });
   }
   return tables.get(id);
@@ -43,11 +44,14 @@ function deleteTable(lobbyId) {
   tables.delete(String(lobbyId));
 }
 
-function sitDown(table, username) {
+// account is the logged-in user (or null for a guest). Logged-in seats play with
+// the account balance; guests get STARTING_BALANCE, which is never saved
+function sitDown(table, username, account = null) {
   if (!table.seats.has(username)) {
     table.seats.set(username, {
       username,
-      balance: STARTING_BALANCE,
+      userId: account ? String(account._id) : null,
+      balance: account ? account.balance : STARTING_BALANCE,
       status: "waiting", // waiting | deciding | raised | folded
       hand: [],
       swapUsed: false,
@@ -59,6 +63,8 @@ function sitDown(table, username) {
   }
   const seat = table.seats.get(username);
   seat.leaving = false;
+  // Coming back between hands: pick up chips added since (refill, ad, admin)
+  if (account && table.phase !== "decision") seat.balance = account.balance;
   return seat;
 }
 
@@ -73,6 +79,7 @@ function startHand(table) {
   table.dealerQualifies = null;
 
   for (const seat of table.seats.values()) {
+    seat.handStart = seat.balance; // before the ante, so settle can work out the net
     seat.hand = [];
     seat.handRank = null;
     seat.result = null;
@@ -140,6 +147,14 @@ function settle(table) {
   clearTimeout(table.timer);
   table.timer = null;
 
+  // Each logged-in player's win or loss this hand. TableController saves these to
+  // the accounts. Done before leavers' seats are deleted so their result isn't lost
+  for (const seat of table.seats.values()) {
+    if (seat.userId && seat.hand.length === 5) {
+      table.unsaved.push({ userId: seat.userId, net: seat.balance - seat.handStart });
+    }
+  }
+
   // Players who left mid-hand lose their seat once the hand is settled
   for (const [name, seat] of table.seats) if (seat.leaving) table.seats.delete(name);
 }
@@ -148,6 +163,13 @@ function settleIfDone(table) {
   if (table.phase !== "decision") return;
   if ([...table.seats.values()].some((seat) => seat.status === "deciding")) return;
   settle(table);
+}
+
+// Hands the saved-up results to the caller and empties the list, so each is saved once
+function takeUnsaved(table) {
+  const results = table.unsaved;
+  table.unsaved = [];
+  return results;
 }
 
 function act(table, username, action, cardIndex) {
@@ -274,4 +296,5 @@ module.exports = {
   foldIdle,
   leave,
   publicState,
+  takeUnsaved,
 };

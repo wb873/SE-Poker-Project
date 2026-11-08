@@ -219,3 +219,30 @@ dbTest("a double click only pays one ad reward", async () => {
   expect(results.filter(Boolean)).toHaveLength(1);
   expect((await UserDao.findById(created._id)).balance).toBe(1000);
 });
+
+dbTest("applyHandResult adds a win", async () => {
+  const created = await UserDao.create(userData({ balance: 1000 }));
+  const updated = await UserDao.applyHandResult(created._id, 40);
+  expect(updated.balance).toBe(1040);
+});
+
+dbTest("applyHandResult takes off a loss", async () => {
+  const created = await UserDao.create(userData({ balance: 1000 }));
+  const updated = await UserDao.applyHandResult(created._id, -30);
+  expect(updated.balance).toBe(970);
+});
+
+dbTest("applyHandResult stops at 0 when the loss is bigger than the balance", async () => {
+  const created = await UserDao.create(userData({ balance: 20 }));
+  const updated = await UserDao.applyHandResult(created._id, -30);
+  expect(updated.balance).toBe(0);
+});
+
+dbTest("applyHandResult doesn't overwrite chips added at the same moment", async () => {
+  const created = await UserDao.create(userData({ balance: 1000 }));
+  await Promise.all([
+    UserDao.applyHandResult(created._id, -10),
+    UserDao.addBalance(created._id, 500),
+  ]);
+  expect((await UserDao.findById(created._id)).balance).toBe(1490);
+});

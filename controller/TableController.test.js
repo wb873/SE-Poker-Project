@@ -5,7 +5,12 @@ jest.mock("../model/LobbyDao", () => ({
   findAll: jest.fn(),
 }));
 
+jest.mock("../model/UserDao", () => ({ applyHandResult: jest.fn() }));
+jest.mock("../util/AuthSession", () => ({ userFromToken: jest.fn() }));
+
 const LobbyDao = require("../model/LobbyDao");
+const UserDao = require("../model/UserDao");
+const AuthSession = require("../util/AuthSession");
 const tableGame = require("../tableGame");
 const TableController = require("./TableController");
 
@@ -152,5 +157,101 @@ describe("sweeper", () => {
     await jest.advanceTimersByTimeAsync(120 * 1000);
 
     expect(LobbyDao.removePlayer).not.toHaveBeenCalled();
+  });
+});
+
+describe("account balances at the table", () => {
+  const account = { _id: "u1", username: "a", balance: 5000 };
+
+  async function joinWithToken(id, players = ["a"]) {
+    LobbyDao.findById.mockResolvedValue(lobby(id, players));
+    AuthSession.userFromToken.mockResolvedValue(account);
+    const io = fakeIo();
+    const socket = fakeSocket();
+    io.connect(socket);
+    TableController.registerTableHandlers(io, socket);
+    await socket.handlers["table:join"]({ lobbyId: id, username: "a", token: "good" });
+    return { io, socket };
+  }
+
+  test("a logged-in player sits down with their account balance", async () => {
+    await joinWithToken("B1");
+    expect(AuthSession.userFromToken).toHaveBeenCalledWith("good");
+    expect(tableGame.getTable("B1").seats.get("a")).toMatchObject({ userId: "u1", balance: 5000 });
+  });
+
+  test("a guest without a token gets the guest balance", async () => {
+    LobbyDao.findById.mockResolvedValue(lobby("B2"));
+    const socket = fakeSocket();
+    TableController.registerTableHandlers(fakeIo(), socket);
+    await socket.handlers["table:join"]({ lobbyId: "B2", username: "a" });
+    expect(AuthSession.userFromToken).not.toHaveBeenCalled();
+    expect(tableGame.getTable("B2").seats.get("a")).toMatchObject({ userId: null, balance: 1000 });
+  });
+
+  test("an expired token is refused instead of seating a guest", async () => {
+    LobbyDao.findById.mockResolvedValue(lobby("B3"));
+    AuthSession.userFromToken.mockResolvedValue(null);
+    const socket = fakeSocket();
+    TableController.registerTableHandlers(fakeIo(), socket);
+    await socket.handlers["table:join"]({ lobbyId: "B3", username: "a", token: "old" });
+    expect(socket.emit).toHaveBeenCalledWith("table:error", "Please log in again.");
+    expect(tableGame.getTable("B3")).toBeUndefined();
+  });
+
+  test("a token can't be used to sit in someone else's seat", async () => {
+    LobbyDao.findById.mockResolvedValue(lobby("B4", ["a", "b"]));
+    AuthSession.userFromToken.mockResolvedValue(account); // the token belongs to "a"
+    const socket = fakeSocket();
+    TableController.registerTableHandlers(fakeIo(), socket);
+    await socket.handlers["table:join"]({ lobbyId: "B4", username: "b", token: "good" });
+    expect(socket.emit).toHaveBeenCalledWith("table:error", "That seat belongs to a different account.");
+    expect(tableGame.getTable("B4")).toBeUndefined();
+  });
+
+  test("finishing a hand saves the result to the account", async () => {
+    const { socket } = await joinWithToken("B5");
+    socket.handlers["table:deal"]();
+    socket.handlers["table:action"]({ action: "fold" });
+    expect(UserDao.applyHandResult).toHaveBeenCalledTimes(1);
+    expect(UserDao.applyHandResult).toHaveBeenCalledWith("u1", -10);
+    tableGame.deleteTable("B5"); // stops the turn timer
+  });
+
+  test("a guest's hand is never saved", async () => {
+    LobbyDao.findById.mockResolvedValue(lobby("B6"));
+    const io = fakeIo();
+    const socket = fakeSocket();
+    io.connect(socket);
+    TableController.registerTableHandlers(io, socket);
+    await socket.handlers["table:join"]({ lobbyId: "B6", username: "a" });
+    socket.handlers["table:deal"]();
+    socket.handlers["table:action"]({ action: "fold" });
+    expect(UserDao.applyHandResult).not.toHaveBeenCalled();
+    tableGame.deleteTable("B6");
+  });
+
+  test("the last player leaving mid-hand still has the loss saved", async () => {
+    const { socket } = await joinWithToken("B7");
+    socket.handlers["table:deal"]();
+    LobbyDao.removePlayer.mockResolvedValue({ players: [] });
+
+    await socket.handlers["table:leave"]();
+
+    expect(UserDao.applyHandResult).toHaveBeenCalledWith("u1", -10);
+    expect(tableGame.getTable("B7")).toBeUndefined();
+  });
+
+  test("a failed save is logged and doesn't break the table", async () => {
+    const { socket } = await joinWithToken("B8");
+    UserDao.applyHandResult.mockRejectedValue(new Error("db down"));
+    const log = jest.spyOn(console, "error").mockImplementation(() => {});
+    socket.handlers["table:deal"]();
+    socket.handlers["table:action"]({ action: "fold" });
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(log).toHaveBeenCalledWith("Could not save hand result:", "db down");
+    expect(tableGame.getTable("B8").phase).toBe("done");
+    log.mockRestore();
+    tableGame.deleteTable("B8");
   });
 });

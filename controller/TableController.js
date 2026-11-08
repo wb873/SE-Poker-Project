@@ -1,5 +1,7 @@
 const LobbyDao = require("../model/LobbyDao");
 const tableGame = require("../tableGame");
+const AuthSession = require("../util/AuthSession");
+const UserDao = require("../model/UserDao");
 
 // How often the sweeper runs, and how long a player may be offline before
 // they lose their seat. When the last player is removed, the lobby is deleted.
@@ -10,8 +12,22 @@ const lastSeen = new Map(); // "lobbyId|username" -> last time seen connected
 
 const roomOf = (lobbyId) => `table:${lobbyId}`;
 
+// Saves finished hands to the players' accounts. Errors are logged, not thrown,
+// so one failed save doesn't break the table for everyone
+async function saveResults(table) {
+  for (const { userId, net } of tableGame.takeUnsaved(table)) {
+    if (net === 0) continue;
+    try {
+      await UserDao.applyHandResult(userId, net);
+    } catch (err) {
+      console.error("Could not save hand result:", err.message);
+    }
+  }
+}
+
 // Sends every socket at the table its own view of the state
 function broadcast(io, table) {
+  saveResults(table);
   const ids = io.sockets.adapter.rooms.get(roomOf(table.lobbyId)) || [];
   for (const id of ids) {
     const socket = io.sockets.sockets.get(id);
@@ -36,7 +52,10 @@ async function closeLobby(io, lobbyId) {
 // Takes a player out of the lobby and the table. Deletes the lobby if nobody is left.
 async function removeFromLobby(io, lobbyId, username) {
   const table = tableGame.getTable(lobbyId);
-  if (table) tableGame.leave(table, username);
+  if (table) {
+    tableGame.leave(table, username);
+    saveResults(table); // before closeLobby can delete the table with the results on it
+  }
 
   const updated = await LobbyDao.removePlayer(lobbyId, username);
   if (updated && updated.players.length === 0) return closeLobby(io, lobbyId);
@@ -60,13 +79,18 @@ exports.registerTableHandlers = function (io, socket) {
   }
 
   // Seats a lobby member (or lets someone watch with spectate: true)
-  socket.on("table:join", async ({ lobbyId, username, spectate } = {}) => {
+  socket.on("table:join", async ({ lobbyId, username, spectate, token } = {}) => {
     if (typeof lobbyId !== "string" || typeof username !== "string") return;
     try {
       const lobby = await LobbyDao.findById(lobbyId);
       if (!lobby) return fail("Lobby not found.");
 
       const name = username.trim();
+      // A token means a logged-in player. The name has to match the account,
+      // so nobody can sit down with someone else's balance
+      const account = token ? await AuthSession.userFromToken(token) : null;
+      if (token && !account) return fail("Please log in again.");
+      if (account && account.username !== name) return fail("That seat belongs to a different account.");
       if (!spectate && !lobby.players.includes(name))
         return fail("Join this lobby before sitting at its table.");
 
@@ -76,7 +100,7 @@ exports.registerTableHandlers = function (io, socket) {
       socket.join(roomOf(socket.data.tableLobby));
 
       const table = tableGame.getOrCreateTable(lobby);
-      if (!spectate) tableGame.sitDown(table, name);
+      if (!spectate) tableGame.sitDown(table, name, account);
       broadcast(io, table);
     } catch (err) {
       fail("Could not join the table.");

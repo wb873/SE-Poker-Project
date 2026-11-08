@@ -28,25 +28,32 @@ exports.revokeUser = function(id) {
     }
 };
 
-exports.requireUser = async function(req, res, next) {
-    const token = (req.get('Authorization') || '').replace(/^Bearer /, '');
-    const session = sessions.get(digest(token));
+// Returns the logged-in user for a token, or null. Used by HTTP routes and the table sockets
+exports.userFromToken = async function(token) {
+    const session = sessions.get(digest(token || ''));
     if (!session || session.expires <= Date.now()) {
         exports.revoke(token);
-        return res.status(401).json({ error: 'Please log in again.' });
+        return null;
     }
+    const user = await UserDao.findById(session.id);
+    if (!user || user.isBanned || user.passwordHash !== session.passwordHash) {
+        exports.revoke(token);
+        return null;
+    }
+    return user;
+};
+
+exports.requireUser = async function(req, res, next) {
+    const token = (req.get('Authorization') || '').replace(/^Bearer /, '');
     try {
-        const user = await UserDao.findById(session.id);
-        if (!user || user.isBanned || user.passwordHash !== session.passwordHash) {
-            exports.revoke(token);
-            return res.status(401).json({ error: 'Your session is no longer valid. Please log in again.' });
-        }
+        const user = await exports.userFromToken(token);
+        if (!user) return res.status(401).json({ error: 'Please log in again.' });
         req.user = user;
         next();
     } catch (error) {
         res.status(500).json({ error: 'Could not verify your session.' });
     }
-};
+}; 
 
 exports.requireAdmin = function(req, res, next) {
     if (!req.user?.isAdmin) return res.status(403).json({ error: 'Administrator access required.' });

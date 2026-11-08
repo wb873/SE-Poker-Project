@@ -30,7 +30,7 @@ export default function GameTablePage() {
   const [search_params] = useSearchParams();
   const is_spectator = search_params.get("spectate") === "1";
   const { lobby_id } = useParams();
-  const { player } = use_session();
+  const { player, token, set_balance } = use_session();
   const socket_ref = useRef(null);
   const clock_offset = useRef(0); // server time minus this browser's time
 
@@ -69,12 +69,17 @@ export default function GameTablePage() {
     // Join on every connect, so a dropped connection rejoins
     socket.on("connect", () => {
       socket.emit("chat:join", { lobbyId: lobby_id, username: player.username });
-      socket.emit("table:join", { lobbyId: lobby_id, username: player.username, spectate: is_spectator });
+      // The token tells the server this is a logged-in account, so the seat uses
+      // the account balance. Guests have no token and play with 1,000 chips
+      socket.emit("table:join", { lobbyId: lobby_id, username: player.username, spectate: is_spectator, token });
     });
 
     socket.on("table:state", (state) => {
       clock_offset.current = state.serverNow - Date.now();
       set_table(state);
+      // Keep the session balance (main menu, out of chips panel) in step with the seat
+      const mine = state.seats.find((seat) => seat.isYou);
+      if (mine && !player.is_guest) set_balance(mine.balance);
     });
     socket.on("table:error", (message) => set_error(message));
     socket.on("table:closed", () => navigate("/lobbies"));
@@ -87,7 +92,7 @@ export default function GameTablePage() {
     });
 
     return () => socket.disconnect();
-  }, [lobby_id, player.username, is_spectator]);
+  }, [lobby_id, player.username, player.is_guest, is_spectator, token]);
 
   // Countdown to the server's deadline
   useEffect(() => {

@@ -7,15 +7,24 @@ const {
   applyAction,
   nextHand,
 } = require("../game");
+const { requireUser } = require("../util/AuthSession");
+const LeaderboardController = require("../controller/LeaderboardController");
 
 const router = express.Router();
 
+//Logged in players are attached to their game so their hands count for the leaderboard (LB1); guests send no token and play without being recorded
+function optionalUser(req, res, next) {
+  if (!req.get("Authorization")) return next();
+  requireUser(req, res, next);
+}
+
 // Start a new game and immediately deal its first hand.
 // Optional request body: { "ante": 10 }
-router.post("/start", (req, res) => {
+router.post("/start", optionalUser, (req, res) => {
   try {
     const ante = req.body?.ante ?? 10;
     const game = createGame(ante);
+    if (req.user) getGame(game.gameId).owner = req.user.username;
 
     res.status(201).json({
       success: true,
@@ -71,7 +80,8 @@ router.post("/current/action", (req, res) => {
 
   try {
     const updatedGame = applyAction(game, action, { cardIndex });
-
+    LeaderboardController.recordHand(game);
+    
     res.json({
       success: true,
       game: updatedGame,

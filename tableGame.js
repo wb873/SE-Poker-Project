@@ -8,6 +8,7 @@ const {
 
 // One shared table per lobby. Everyone plays their own hand against one dealer hand.
 const tables = new Map(); // lobbyId -> table
+const { randomUUID } = require('crypto');
 
 function getTable(lobbyId) {
   return tables.get(String(lobbyId));
@@ -43,7 +44,7 @@ function deleteTable(lobbyId) {
   tables.delete(String(lobbyId));
 }
 
-function sitDown(table, username) {
+function sitDown(table, username, accountId = null) {
   if (!table.seats.has(username)) {
     table.seats.set(username, {
       username,
@@ -58,6 +59,7 @@ function sitDown(table, username) {
     });
   }
   const seat = table.seats.get(username);
+  seat.accountId = accountId;
   seat.leaving = false;
   return seat;
 }
@@ -68,6 +70,7 @@ function startHand(table) {
     throw new Error("Nobody has enough chips to ante.");
 
   const deck = createDeck();
+  table.handId = randomUUID();
   table.dealerHand = deck.splice(0, 5);
   table.dealerHandRank = null;
   table.dealerQualifies = null;
@@ -78,6 +81,8 @@ function startHand(table) {
     seat.result = null;
     seat.swapUsed = false;
     if (seat.balance >= table.ante) {
+      seat.handStartBalance = seat.balance;
+      seat.handOwnerId = seat.accountId;
       seat.balance -= table.ante;
       seat.hand = deck.splice(0, 5);
       seat.status = "deciding";
@@ -139,6 +144,17 @@ function settle(table) {
   table.deadline = null;
   clearTimeout(table.timer);
   table.timer = null;
+
+  // Capture every result before departing players' seats are removed.
+  const settledAt = new Date();
+  for (const seat of table.seats.values()) {
+    if (seat.result && seat.handOwnerId && table.onHandSettled) {
+      table.onHandSettled({ phase: 'done', ownerId: seat.handOwnerId,
+        handId: `${table.handId}:${seat.handOwnerId}`, settledAt,
+        balance: seat.balance, handStartBalance: seat.handStartBalance, result: seat.result,
+        playerHandRank: seat.handRank });
+    }
+  }
 
   // Players who left mid-hand lose their seat once the hand is settled
   for (const [name, seat] of table.seats) if (seat.leaving) table.seats.delete(name);

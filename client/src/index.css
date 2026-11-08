@@ -222,6 +222,22 @@ a { color: var(--primary); }
 .admin_text { white-space: pre-wrap; overflow-wrap: anywhere; }
 .admin_user { flex-wrap: wrap; }
 
+/* Monthly leaderboard shares the menu's panel and cyan accent styles. */
+.menu_layout { grid-template-columns: 190px minmax(0, 1fr) 290px; }
+.menu_sidebar { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.monthly_leaderboard h2 { font-size: 20px; }
+.monthly_leaderboard p { font-size: 13px; line-height: 1.5; }
+.leaderboard_table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 13px; margin-bottom: 14px; }
+.leaderboard_table caption { text-align: left; margin-bottom: 8px; }
+.leaderboard_table th, .leaderboard_table td { padding: 9px 4px; text-align: left; overflow-wrap: anywhere; }
+.leaderboard_table thead { color: var(--text_muted); }
+.leaderboard_table th:first-child, .leaderboard_table td:first-child { width: 42px; }
+.leaderboard_table th:last-child, .leaderboard_table td:last-child { width: 85px; text-align: right; font-variant-numeric: tabular-nums; }
+.leaderboard_table tbody tr { border-top: 1px solid var(--border); }
+.leaderboard_name { display: block; }
+.leaderboard_you { background: var(--primary_soft); color: var(--primary); }
+.leaderboard_personal { border-top: 3px solid var(--primary_dark); }
+
 @media (max-width: 800px) {
   .admin_columns { grid-template-columns: 1fr; }
   .menu_layout, .table_controls { grid-template-columns: 1fr; }

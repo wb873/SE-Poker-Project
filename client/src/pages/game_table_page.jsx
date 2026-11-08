@@ -30,7 +30,7 @@ export default function GameTablePage() {
   const [search_params] = useSearchParams();
   const is_spectator = search_params.get("spectate") === "1";
   const { lobby_id } = useParams();
-  const { player } = use_session();
+  const { player, token } = use_session();
   const socket_ref = useRef(null);
   const clock_offset = useRef(0); // server time minus this browser's time
 
@@ -69,7 +69,7 @@ export default function GameTablePage() {
     // Join on every connect, so a dropped connection rejoins
     socket.on("connect", () => {
       socket.emit("chat:join", { lobbyId: lobby_id, username: player.username });
-      socket.emit("table:join", { lobbyId: lobby_id, username: player.username, spectate: is_spectator });
+      socket.emit("table:join", { lobbyId: lobby_id, username: player.username, spectate: is_spectator, token });
     });
 
     socket.on("table:state", (state) => {
@@ -87,7 +87,7 @@ export default function GameTablePage() {
     });
 
     return () => socket.disconnect();
-  }, [lobby_id, player.username, is_spectator]);
+  }, [lobby_id, player.username, is_spectator, token, navigate]);
 
   // Countdown to the server's deadline
   useEffect(() => {

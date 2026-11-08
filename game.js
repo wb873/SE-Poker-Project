@@ -184,6 +184,7 @@ function startHand(game) {
   }
    // Balance before the ante, so the hand's net result can be worked out when it ends (LB1)
   game.handStartBalance = game.balance;
+  game.handId = randomUUID();
 
   game.balance -= game.ante;
 

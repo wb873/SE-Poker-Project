@@ -1,5 +1,7 @@
 const LobbyDao = require("../model/LobbyDao");
 const tableGame = require("../tableGame");
+const sessions = require('../util/AuthSession');
+const leaderboard = require('./LeaderboardController');
 
 // How often the sweeper runs, and how long a player may be offline before
 // they lose their seat. When the last player is removed, the lobby is deleted.
@@ -60,15 +62,20 @@ exports.registerTableHandlers = function (io, socket) {
   }
 
   // Seats a lobby member (or lets someone watch with spectate: true)
-  socket.on("table:join", async ({ lobbyId, username, spectate } = {}) => {
+  socket.on("table:join", async ({ lobbyId, username, spectate, token } = {}) => {
     if (typeof lobbyId !== "string" || typeof username !== "string") return;
     try {
       const lobby = await LobbyDao.findById(lobbyId);
       if (!lobby) return fail("Lobby not found.");
 
-      const name = username.trim();
+      const user = token ? await sessions.authenticate(token) : null;
+      const name = user ? user.username : username.trim();
       if (!spectate && !lobby.players.includes(name))
         return fail("Join this lobby before sitting at its table.");
+
+      const existingSeat = tableGame.getTable(String(lobby._id))?.seats.get(name);
+      if (!spectate && existingSeat?.accountId && String(existingSeat.accountId) !== String(user?._id))
+        return fail('Sign in to rejoin this player’s seat.');
 
       if (socket.data.tableLobby) socket.leave(roomOf(socket.data.tableLobby));
       socket.data.tableLobby = String(lobby._id);
@@ -76,10 +83,11 @@ exports.registerTableHandlers = function (io, socket) {
       socket.join(roomOf(socket.data.tableLobby));
 
       const table = tableGame.getOrCreateTable(lobby);
-      if (!spectate) tableGame.sitDown(table, name);
+      table.onHandSettled = leaderboard.recordHand;
+      if (!spectate) tableGame.sitDown(table, name, user ? String(user._id) : null);
       broadcast(io, table);
     } catch (err) {
-      fail("Could not join the table.");
+      fail(err.status ? err.message : "Could not join the table.");
     }
   });
 

@@ -1,4 +1,27 @@
 const tableGame = require("./tableGame");
+afterEach(() => { for (const id of tableGame.tableIds()) tableGame.deleteTable(id); });
+
+test('settlement snapshots include swap fees and distinct hand IDs, excluding guests', () => {
+  const table = tableGame.getOrCreateTable({ _id: 'snapshot-test', ante: 10, turnTimer: 30 });
+  tableGame.sitDown(table, 'member', 'account-id');
+  tableGame.sitDown(table, 'Guest');
+  table.onHandSettled = jest.fn();
+  tableGame.startHand(table);
+  tableGame.act(table, 'member', 'swap', 0);
+  tableGame.act(table, 'member', 'fold');
+  tableGame.act(table, 'Guest', 'fold');
+  expect(table.onHandSettled).toHaveBeenCalledTimes(1);
+  const first = table.onHandSettled.mock.calls[0][0];
+  expect(first.balance - first.handStartBalance).toBe(-30);
+  expect(first.playerHandRank).toEqual(expect.any(String));
+  tableGame.foldIdle(table);
+  expect(table.onHandSettled).toHaveBeenCalledTimes(1);
+  tableGame.startHand(table);
+  tableGame.foldIdle(table);
+  const next = table.onHandSettled.mock.calls[1][0];
+  expect(next.handId).not.toBe(first.handId);
+  expect(first.balance).toBe(970);
+});
 
 const VALUES = { 2: 2, 5: 5, 8: 8, 10: 10, Q: 12, K: 13, A: 14 };
 const c = (rank, suit) => ({ rank: String(rank), suit, value: VALUES[rank] });

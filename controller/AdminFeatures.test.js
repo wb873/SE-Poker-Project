@@ -1,6 +1,6 @@
 jest.mock('../model/UserDao', () => ({
   findById: jest.fn(), findByIdentifier: jest.fn(), listForAdmin: jest.fn(),
-  updatePassword: jest.fn(), setBanned: jest.fn(), setAdmin: jest.fn(), countAdmins: jest.fn(),
+  updatePassword: jest.fn(), setBanned: jest.fn(), setAdmin: jest.fn(), countAdmins: jest.fn(), addBalance: jest.fn(),
 }));
 jest.mock('../model/ContactDao', () => ({
   create: jest.fn(), readAll: jest.fn(), readMine: jest.fn(), respond: jest.fn(),
@@ -192,4 +192,39 @@ test('database failures return 500 rather than granting access', async () => {
   const token = await login();
   users.findById.mockRejectedValue(new Error('offline'));
   expect((await request('/admin/users', token)).status).toBe(500);
+});
+
+test('admins can add money to a player account', async () => {
+  users.addBalance.mockResolvedValue({ _id: player._id, balance: 1500 });
+  const result = await request(`/admin/users/${player._id}/balance`, await login(), 'PATCH', { amount: 500 });
+  expect(result.status).toBe(200);
+  expect(result.body.balance).toBe(1500);
+  expect(users.addBalance).toHaveBeenCalledWith(player._id, 500);
+});
+test('bad amounts are rejected before the balance is touched', async () => {
+  const token = await login();
+  for (const amount of [0, -5, 10.5, '500', null, 1000001]) {
+    expect((await request(`/admin/users/${player._id}/balance`, token, 'PATCH', { amount })).status).toBe(400);
+  }
+  expect((await request(`/admin/users/${player._id}/balance`, token, 'PATCH', {})).status).toBe(400);
+  expect(users.addBalance).not.toHaveBeenCalled();
+});
+test('players and anonymous callers cannot add money', async () => {
+  const path = `/admin/users/${player._id}/balance`;
+  expect((await request(path, await login('player'), 'PATCH', { amount: 500 })).status).toBe(403);
+  expect((await request(path, null, 'PATCH', { amount: 500 })).status).toBe(401);
+  expect(users.addBalance).not.toHaveBeenCalled();
+});
+test('money cannot be added to admin accounts or unknown users', async () => {
+  const token = await login();
+  expect((await request(`/admin/users/${admin._id}/balance`, token, 'PATCH', { amount: 500 })).status).toBe(403);
+  expect((await request('/admin/users/not-an-id/balance', token, 'PATCH', { amount: 500 })).status).toBe(404);
+  expect(users.addBalance).not.toHaveBeenCalled();
+});
+test('adding money reports a deleted account or a database failure', async () => {
+  const token = await login();
+  users.addBalance.mockResolvedValue(null);
+  expect((await request(`/admin/users/${player._id}/balance`, token, 'PATCH', { amount: 500 })).status).toBe(404);
+  users.addBalance.mockRejectedValue(new Error('offline'));
+  expect((await request(`/admin/users/${player._id}/balance`, token, 'PATCH', { amount: 500 })).status).toBe(500);
 });

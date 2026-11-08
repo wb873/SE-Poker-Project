@@ -11,6 +11,7 @@ export default function AdminPage() {
   const [selected_id, set_selected_id] = useState(null);
   const [drafts, set_drafts] = useState({});
   const [passwords, set_passwords] = useState({});
+  const [amounts, set_amounts] = useState({});
   const [search, set_search] = useState('');
   const [notice, set_notice] = useState('');
   const [error, set_error] = useState('');
@@ -74,6 +75,26 @@ export default function AdminPage() {
       set_passwords((previous) => ({ ...previous, [user._id]: '' }));
       set_users((previous) => previous.map((item) => item._id === user._id ? { ...item, mustChangePassword: true } : item));
       set_notice(`Temporary password set for ${user.username}. Email it to them at ${user.email}; no email was sent from here. They will be offered a password change when they log in.`);
+    } catch (err) { set_error(err.message); }
+    finally { set_busy(false); }
+  }
+
+  async function add_money(event, user) {
+    event.preventDefault();
+    const amount = Number(amounts[user._id]);
+    if (!window.confirm(`Add $${amount.toLocaleString()} to ${user.username}?`)) return;
+    set_busy(true); set_error(''); set_notice('');
+    try {
+      const response = await fetch(`${API_URL}/api/admin/users/${user._id}/balance`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ amount }),
+      });
+      const updated = await response.json();
+      if (!response.ok) throw new Error(updated.error || 'Could not add money.');
+      set_amounts((previous) => ({ ...previous, [user._id]: '' }));
+      set_users((previous) => previous.map((item) => item._id === updated._id ? updated : item));
+      set_notice(`Added $${amount.toLocaleString()} to ${user.username}. New balance: $${updated.balance.toLocaleString()}.`);
     } catch (err) { set_error(err.message); }
     finally { set_busy(false); }
   }
@@ -157,12 +178,18 @@ export default function AdminPage() {
       <input id="admin_search" className="input" value={search} placeholder="Username or email" onChange={(event) => set_search(event.target.value)} />
       <div className="list admin_section">
         {visible_users.map((user) => <div className="panel" key={user._id}>
-          <div className="row wrap"><b>{user.username}</b><span className="muted">{user.email}</span><span className="tag">{user.isAdmin ? 'Admin' : user.isBanned ? 'Banned' : 'Active'}</span>{user.mustChangePassword && <span className="tag">Temporary password</span>}{user._id === player.id && <span className="tag cyan">You</span>}</div>
+          <div className="row wrap"><b>{user.username}</b><span className="muted">{user.email}</span><span className="muted">Balance: ${user.balance.toLocaleString()}</span><span className="tag">{user.isAdmin ? 'Admin' : user.isBanned ? 'Banned' : 'Active'}</span>{user.mustChangePassword && <span className="tag">Temporary password</span>}{user._id === player.id && <span className="tag cyan">You</span>}</div>
           {!user.isAdmin && <form className="row wrap admin_section" onSubmit={(event) => reset_password(event, user)}>
             <label htmlFor={`password_${user._id}`}>Temporary password</label>
             <input id={`password_${user._id}`} className="input" type="password" required minLength={8} maxLength={128} autoComplete="new-password"
               value={passwords[user._id] || ''} onChange={(event) => set_passwords((previous) => ({ ...previous, [user._id]: event.target.value }))} />
             <button className="btn small" disabled={busy}>Set Temporary Password</button>
+          </form>}
+          {!user.isAdmin && <form className="row wrap admin_section" onSubmit={(event) => add_money(event, user)}>
+            <label htmlFor={`amount_${user._id}`}>Add money</label>
+            <input id={`amount_${user._id}`} className="input" type="number" required min={1} max={1000000} step={1}
+              value={amounts[user._id] || ''} onChange={(event) => set_amounts((previous) => ({ ...previous, [user._id]: event.target.value }))} />
+            <button className="btn small" disabled={busy}>Add Money</button>
           </form>}
           {/* Admins cannot change their own rights, which keeps at least one admin */}
           {user._id !== player.id && <div className="row wrap admin_section">

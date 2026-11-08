@@ -7,14 +7,14 @@ test('admin user list explicitly selects safe fields', async () => {
   const query = { select: jest.fn().mockReturnThis(), sort: jest.fn().mockReturnThis(), lean: jest.fn().mockResolvedValue([]) };
   jest.spyOn(users.model, 'find').mockReturnValue(query);
   await users.listForAdmin();
-  expect(query.select).toHaveBeenCalledWith('username email isAdmin isBanned mustChangePassword');
+  expect(query.select).toHaveBeenCalledWith('username email balance isAdmin isBanned mustChangePassword');
 });
 test('ban updates only the ban field and selects safe response fields', async () => {
   const query = { select: jest.fn().mockResolvedValue({ isBanned: true }) };
   const update = jest.spyOn(users.model, 'findByIdAndUpdate').mockReturnValue(query);
   await users.setBanned('507f1f77bcf86cd799439012', true);
   expect(update).toHaveBeenCalledWith('507f1f77bcf86cd799439012', { isBanned: true }, { returnDocument: 'after' });
-  expect(query.select).toHaveBeenCalledWith('username email isAdmin isBanned');
+  expect(query.select).toHaveBeenCalledWith('username email balance isAdmin isBanned mustChangePassword');
 });
 test('contact history is filtered by owner', async () => {
   const query = { sort: jest.fn().mockResolvedValue([]) };
@@ -39,5 +39,12 @@ test('setAdmin sets only the admin flag and selects safe response fields', async
   const update = jest.spyOn(users.model, 'findByIdAndUpdate').mockReturnValue(query);
   await users.setAdmin('507f1f77bcf86cd799439012', false);
   expect(update).toHaveBeenCalledWith('507f1f77bcf86cd799439012', { isAdmin: false }, { returnDocument: 'after' });
-  expect(query.select).toHaveBeenCalledWith('username email isAdmin isBanned mustChangePassword');
+  expect(query.select).toHaveBeenCalledWith('username email balance isAdmin isBanned mustChangePassword');
+});
+test('addBalance adds on the database side and selects safe response fields', async () => {
+  const query = { select: jest.fn().mockResolvedValue({ balance: 1500 }) };
+  const update = jest.spyOn(users.model, 'findByIdAndUpdate').mockReturnValue(query);
+  await users.addBalance('507f1f77bcf86cd799439012', 500);
+  expect(update).toHaveBeenCalledWith('507f1f77bcf86cd799439012', { $inc: { balance: 500 } }, { returnDocument: 'after' });
+  expect(query.select).toHaveBeenCalledWith('username email balance isAdmin isBanned mustChangePassword');
 });

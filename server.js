@@ -41,7 +41,7 @@ app.use('/api/admin', require('./routes/admin_routes'));
 app.use("/api/friends", friendRoutes);
 app.use("/api/messages", messageRoutes);
 app.use("/api/leaderboard", leaderboardRoutes);
-
+app.use('/api/money', require('./routes/money_routes'));
 
 io.on("connection", (socket) => {
   console.log(`Socket connected: ${socket.id}`);

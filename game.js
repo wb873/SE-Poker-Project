@@ -390,4 +390,10 @@ module.exports = {
   getPublicState,
   applyAction,
   nextHand,
+  // Shared with tableGame.js
+  createDeck,
+  evaluateHand,
+  compareHands,
+  dealerQualifies,
+  STARTING_BALANCE,
 };

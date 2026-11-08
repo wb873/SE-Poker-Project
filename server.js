@@ -11,6 +11,7 @@ const db = require("./model/DbConnection");
 const http = require("http");
 const { Server } = require("socket.io");
 const ChatController = require("./controller/ChatController");
+const TableController = require("./controller/TableController");
 
 const app = express();
 const server = http.createServer(app);
@@ -20,6 +21,7 @@ const PORT = process.env.PORT || 4000;
 
 if (process.env.DB_URI || process.env.CI) {
   db.connect();
+  TableController.startSweeper(io);
 } else {
   console.warn("DB_URI is not set: lobby routes will fail until you add it to .env");
 }
@@ -44,7 +46,8 @@ app.use("/api/leaderboard", leaderboardRoutes);
 io.on("connection", (socket) => {
   console.log(`Socket connected: ${socket.id}`);
   ChatController.registerChatHandlers(io, socket);
-
+  TableController.registerTableHandlers(io, socket);
+  
   socket.on("disconnect", () => {
     console.log(`Socket disconnected: ${socket.id}`);
   });

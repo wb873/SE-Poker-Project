@@ -10,6 +10,7 @@ const userSchema = new mongoose.Schema(
     passwordHash: { type: String, required: true },
     avatar: { type: String, default: "default" },
     balance: { type: Number, min: 0, default: 10000 },
+    lastAdRewardAt: { type: Date, default: null }, // when the last ad reward was paid (M2)
     isAdmin: { type: Boolean, default: false },
     isBanned: { type: Boolean, default: false },
     // Set when an admin picks a temporary password (P4); the player is offered
@@ -79,12 +80,39 @@ exports.updatePassword = (id, passwordHash, temporary = false) => {
   );
 };
 
+// Free refill for a broke player. The balance check is part of the update, so a
+// double click can't pay out twice. Returns null if the player isn't broke (M1)
+exports.refillBalance = (id, below, amount) => User.findOneAndUpdate(
+  { _id: id, balance: { $lt: below } },
+  { $inc: { balance: amount } },
+  { returnDocument: 'after' }
+).select('balance');
+
+// Pays an ad reward to a broke player who is past the cooldown. Like
+// refillBalance, all the checks are in the update, so it can't pay twice (M2)
+exports.claimAdReward = (id, below, amount, cooldownMs) => {
+  const now = new Date();
+  return User.findOneAndUpdate(
+    {
+      _id: id,
+      balance: { $lt: below },
+      $or: [{ lastAdRewardAt: null }, { lastAdRewardAt: { $lte: new Date(now.getTime() - cooldownMs) } }],
+    },
+    { $inc: { balance: amount }, $set: { lastAdRewardAt: now } },
+    { returnDocument: 'after' }
+  ).select('balance');
+};
+
 exports.deleteAll = () => User.deleteMany({}); // tests only
 
 exports.model = User;
 
 // Admin operations never return password hashes.
-exports.listForAdmin = () => User.find().select('username email isAdmin isBanned mustChangePassword').sort({ username: 1 }).lean();
-exports.setBanned = (id, isBanned) => User.findByIdAndUpdate(id, { isBanned }, { returnDocument: 'after' }).select('username email isAdmin isBanned');
-exports.setAdmin = (id, isAdmin) => User.findByIdAndUpdate(id, { isAdmin }, { returnDocument: 'after' }).select('username email isAdmin isBanned mustChangePassword');
+const ADMIN_FIELDS = 'username email balance isAdmin isBanned mustChangePassword';
+
+exports.listForAdmin = () => User.find().select(ADMIN_FIELDS).sort({ username: 1 }).lean();
+exports.setBanned = (id, isBanned) => User.findByIdAndUpdate(id, { isBanned }, { returnDocument: 'after' }).select(ADMIN_FIELDS);
+exports.setAdmin = (id, isAdmin) => User.findByIdAndUpdate(id, { isAdmin }, { returnDocument: 'after' }).select(ADMIN_FIELDS);
 exports.countAdmins = () => User.countDocuments({ isAdmin: true });
+// $inc adds on the database side, so a hand finishing at the same moment isn't overwritten (A7)
+exports.addBalance = (id, amount) => User.findByIdAndUpdate(id, { $inc: { balance: amount } }, { returnDocument: 'after' }).select(ADMIN_FIELDS);

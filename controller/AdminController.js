@@ -68,3 +68,18 @@ exports.setAdmin = async function(req, res) {
         res.json(updated);
     } catch (error) { res.status(500).json({ error: 'Could not change admin rights.' }); }
 };
+
+const MAX_ADD_AMOUNT = 1000000;
+//Adds virtual money to a player's account (A7)
+exports.addBalance = async function (req,res){
+  const amount = req.body?.amount;
+  if (!Number.isSafeInteger(amount) || amount < 1 || amount > MAX_ADD_AMOUNT)
+    return res.status(400).json({ error: `Amount must be a whole number from 1 to ${MAX_ADD_AMOUNT}.` });
+  try {
+    const user = await target(req, res);
+    if (!user) return;
+    const updated = await dao.addBalance(user._id, amount);
+    if (!updated) return res.status(404).json({ error: 'User not found.'});
+    res.json(updated);
+  } catch (error) { res.status(500).json ({ error: 'Could not add money' }); }
+};

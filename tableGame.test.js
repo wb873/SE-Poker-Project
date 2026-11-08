@@ -13,6 +13,7 @@ test('settlement snapshots include swap fees and distinct hand IDs, excluding gu
   expect(table.onHandSettled).toHaveBeenCalledTimes(1);
   const first = table.onHandSettled.mock.calls[0][0];
   expect(first.balance - first.handStartBalance).toBe(-30);
+  expect(first.playerHandRank).toEqual(expect.any(String));
   tableGame.foldIdle(table);
   expect(table.onHandSettled).toHaveBeenCalledTimes(1);
   tableGame.startHand(table);

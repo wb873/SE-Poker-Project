@@ -1,16 +1,21 @@
 const dao = require('../model/LeaderboardDao');
 const periods = require('../util/LeaderboardPeriod');
 const settingsDao = require('../model/LeaderboardSettingsDao');
+const statsDao = require('../model/PlayerStatsDao');
 
 // Game/table ownership is an authenticated account ID, never a browser name.
 // Snapshot before awaiting: the table may deal its next hand while saving.
 exports.recordHand = async function(game) {
     if (game.phase !== 'done' || !game.ownerId || !game.handId) return;
-    const { ownerId, handId, settledAt, balance, handStartBalance } = game;
-    try {
-        await dao.recordResult(ownerId, balance - handStartBalance, settledAt || new Date(), handId);
-    } catch (error) {
-        console.error('Could not record hand result:', error.message);
+    const { ownerId, handId, settledAt, balance, handStartBalance, result, playerHandRank } = game;
+    // Failure of one store must not prevent the independent lifetime or
+    // leaderboard update from running. Both writes are idempotent per hand.
+    const writes = await Promise.allSettled([
+        Promise.resolve().then(() => dao.recordResult(ownerId, balance - handStartBalance, settledAt || new Date(), handId)),
+        Promise.resolve().then(() => statsDao.recordHand(ownerId, handId, balance - handStartBalance, result, playerHandRank)),
+    ]);
+    for (const write of writes) {
+        if (write.status === 'rejected') console.error('Could not record hand result:', write.reason.message);
     }
 };
 

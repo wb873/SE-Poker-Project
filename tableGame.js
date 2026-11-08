@@ -151,7 +151,8 @@ function settle(table) {
     if (seat.result && seat.handOwnerId && table.onHandSettled) {
       table.onHandSettled({ phase: 'done', ownerId: seat.handOwnerId,
         handId: `${table.handId}:${seat.handOwnerId}`, settledAt,
-        balance: seat.balance, handStartBalance: seat.handStartBalance, result: seat.result });
+        balance: seat.balance, handStartBalance: seat.handStartBalance, result: seat.result,
+        playerHandRank: seat.handRank });
     }
   }
 

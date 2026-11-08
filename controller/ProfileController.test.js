@@ -15,7 +15,7 @@ beforeAll(async () => {
 afterAll(() => new Promise((resolve) => server.close(resolve)));
 beforeEach(() => {
     jest.resetAllMocks();
-    user = { _id: '507f1f77bcf86cd799439011', passwordHash: 'secret-hash', email: 'private@example.com',
+    user = { _id: '507f1f77bcf86cd799439011', passwordHash: 'secret-hash', email: 'private@example.com', createdAt: new Date('2026-11-08T02:30:00Z'),
         stats: { handsPlayed: 10, handsWon: 3, totalWinnings: -40, biggestWin: 60, timesFolded: 2, bestHandRank: 5 } };
     users.findById.mockResolvedValue(user);
 });
@@ -23,10 +23,16 @@ test('returns current authenticated lifetime stats without secrets or another re
     const response = await fetch(`${base}?userId=someone-else`, { headers: { Authorization: `Bearer ${sessions.create(user)}` } });
     expect(response.status).toBe(200);
     const body = await response.json();
-    expect(body).toEqual({ scope: 'lifetime', stats: { handsPlayed: 10, handsWon: 3, winRate: 30, totalWinnings: -40, biggestWin: 60, timesFolded: 2, bestHand: 'Flush', sideBetWinnings: null } });
+    expect(body).toEqual({ scope: 'lifetime', createdAt: '2026-11-08T02:30:00.000Z', stats: { handsPlayed: 10, handsWon: 3, winRate: 30, totalWinnings: -40, biggestWin: 60, timesFolded: 2, bestHand: 'Flush', sideBetWinnings: null } });
     expect(JSON.stringify(body)).not.toContain('secret-hash');
     expect(JSON.stringify(body)).not.toContain('private@example.com');
     expect(users.findById).toHaveBeenCalledWith(user._id);
+});
+test.each([undefined, 'invalid date'])('missing or invalid creation dates are unavailable, never replaced with today (%s)', async (createdAt) => {
+    user.createdAt = createdAt;
+    const response = await fetch(base, { headers: { Authorization: `Bearer ${sessions.create(user)}` } });
+    expect(response.status).toBe(200);
+    expect((await response.json()).createdAt).toBeNull();
 });
 test.each([null, 'forged'])('requires a valid account session (%s)', async (token) => {
     const response = await fetch(base, { headers: token ? { Authorization: `Bearer ${token}` } : {} });

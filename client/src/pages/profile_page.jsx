@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import PageHeader from "../components/page_header.jsx";
 import { use_session } from "../session.jsx";
-import { mock_stats, avatar_options } from "../mock_data.js";
+import { avatar_options } from "../mock_data.js";
 import { API_URL } from '../api_config.js';
 
 // Profile and statistics (stories P9, avatar selection)
@@ -10,6 +10,7 @@ export default function ProfilePage() {
   const [avatar, set_avatar] = useState(avatar_options[0]);
   const [editing, set_editing] = useState(false);
   const [stats, set_stats] = useState(null);
+  const [created_at, set_created_at] = useState(null);
   const [loading, set_loading] = useState(true);
   const [error, set_error] = useState('');
   const [refresh, set_refresh] = useState(0);
@@ -26,9 +27,9 @@ export default function ProfilePage() {
         });
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || 'Could not load your statistics.');
-        if (!controller.signal.aborted) { set_stats(data.stats); set_error(''); }
+        if (!controller.signal.aborted) { set_stats(data.stats); set_created_at(data.createdAt); set_error(''); }
       } catch (err) {
-        if (!controller.signal.aborted) { set_stats(null); set_error(err.message); }
+        if (!controller.signal.aborted) { set_stats(null); set_created_at(null); set_error(err.message); }
       } finally {
         pending = false;
         if (!controller.signal.aborted) set_loading(false);
@@ -44,6 +45,10 @@ export default function ProfilePage() {
   }, [token, refresh]);
 
   const money = (value) => (value < 0 ? "-$" : "$") + Math.abs(value).toLocaleString();
+  const joined = created_at && Number.isFinite(Date.parse(created_at))
+    ? new Date(created_at).toLocaleDateString(undefined, {
+      year: 'numeric', month: 'long', day: 'numeric', timeZone: 'America/New_York',
+    }) : null;
 
   const stat_cards = stats ? [
     { label: "Hands Played", value: stats.handsPlayed.toLocaleString() },
@@ -62,7 +67,7 @@ export default function ProfilePage() {
 
       <div className="profile_avatar">{avatar}</div>
       <div className="row" style={{ justifyContent: "center" }}>
-        <div className="panel">User Since: {mock_stats.user_since}</div>
+        <div className="panel">User Since: {joined ? <time dateTime={created_at}>{joined}</time> : loading ? 'Loading...' : 'Not available'}</div>
         <button className="btn" onClick={() => set_editing(!editing)}>{editing ? "Done" : "Edit"}</button>
       </div>
 

@@ -182,6 +182,9 @@ function startHand(game) {
   if (game.balance < game.ante) {
     throw new Error("Not enough chips to place the ante.");
   }
+   // Balance before the ante, so the hand's net result can be worked out when it ends (LB1)
+  game.handStartBalance = game.balance;
+  game.handId = randomUUID();
 
   game.balance -= game.ante;
 
@@ -388,4 +391,10 @@ module.exports = {
   getPublicState,
   applyAction,
   nextHand,
+  // Shared with tableGame.js
+  createDeck,
+  evaluateHand,
+  compareHands,
+  dealerQualifies,
+  STARTING_BALANCE,
 };

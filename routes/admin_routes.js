@@ -12,4 +12,5 @@ router.get('/users', admin.listUsers);
 router.patch('/users/:id/password', admin.resetPassword);
 router.patch('/users/:id/ban', admin.setBan);
 router.patch('/users/:id/admin', admin.setAdmin);
+router.patch('/users/:id/balance', admin.addBalance);
 module.exports = router;

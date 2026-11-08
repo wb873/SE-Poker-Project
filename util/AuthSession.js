@@ -28,24 +28,31 @@ exports.revokeUser = function(id) {
     }
 };
 
-exports.requireUser = async function(req, res, next) {
-    const token = (req.get('Authorization') || '').replace(/^Bearer /, '');
+exports.authenticate = async function(token) {
+    if (typeof token !== 'string') token = '';
     const session = sessions.get(digest(token));
     if (!session || session.expires <= Date.now()) {
         exports.revoke(token);
-        return res.status(401).json({ error: 'Please log in again.' });
+        throw Object.assign(new Error('Please log in again.'), { status: 401 });
     }
     try {
         const user = await UserDao.findById(session.id);
         if (!user || user.isBanned || user.passwordHash !== session.passwordHash) {
             exports.revoke(token);
-            return res.status(401).json({ error: 'Your session is no longer valid. Please log in again.' });
+            throw Object.assign(new Error('Your session is no longer valid. Please log in again.'), { status: 401 });
         }
-        req.user = user;
-        next();
+        return user;
     } catch (error) {
-        res.status(500).json({ error: 'Could not verify your session.' });
+        if (error.status) throw error;
+        throw Object.assign(new Error('Could not verify your session.'), { status: 500 });
     }
+};
+
+exports.requireUser = async function(req, res, next) {
+    try {
+        req.user = await exports.authenticate((req.get('Authorization') || '').replace(/^Bearer /, ''));
+        next();
+    } catch (error) { res.status(error.status || 500).json({ error: error.message }); }
 };
 
 exports.requireAdmin = function(req, res, next) {

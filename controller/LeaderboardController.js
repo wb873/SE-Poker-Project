@@ -2,6 +2,18 @@ const dao = require('../model/LeaderboardDao');
 const periods = require('../util/LeaderboardPeriod');
 const settingsDao = require('../model/LeaderboardSettingsDao');
 
+// Game/table ownership is an authenticated account ID, never a browser name.
+// Snapshot before awaiting: the table may deal its next hand while saving.
+exports.recordHand = async function(game) {
+    if (game.phase !== 'done' || !game.ownerId || !game.handId) return;
+    const { ownerId, handId, settledAt, balance, handStartBalance } = game;
+    try {
+        await dao.recordResult(ownerId, balance - handStartBalance, settledAt || new Date(), handId);
+    } catch (error) {
+        console.error('Could not record hand result:', error.message);
+    }
+};
+
 exports.getMonthly = async function(req, res) {
     try {
         const period = periods.current();

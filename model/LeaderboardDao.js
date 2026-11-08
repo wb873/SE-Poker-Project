@@ -8,6 +8,7 @@ const monthlyStatsSchema = new mongoose.Schema({
     month: { type: String, required: true },
     netChips: { type: Number, default: 0 },
     handsPlayed: { type: Number, default: 0 },
+    recordedResults: { type: [String], default: [] },
 }, { timestamps: true });
 monthlyStatsSchema.index({ month: 1, userId: 1 }, { unique: true });
 const MonthlyStats = mongoose.models.MonthlyStats || mongoose.model('MonthlyStats', monthlyStatsSchema);
@@ -15,10 +16,11 @@ const MonthlyStats = mongoose.models.MonthlyStats || mongoose.model('MonthlyStat
 // Server-only integration point. Call ONCE after a registered player's hand is
 // settled, with the net change including ante, raise, swap fees and payouts.
 // Guests never have a User document and cannot create an entry here.
-exports.recordResult = async function(userId, netChips, settledAt = new Date()) {
+exports.recordResult = async function(userId, netChips, settledAt = new Date(), resultId = null) {
     if (!mongoose.isValidObjectId(userId)) throw new Error('A registered user ID is required.');
     if (!Number.isSafeInteger(netChips)) throw new Error('Net chips must be a whole number.');
     if (!(settledAt instanceof Date) || !Number.isFinite(settledAt.getTime())) throw new Error('A valid settlement date is required.');
+    if (resultId !== null && (typeof resultId !== 'string' || !resultId || resultId.length > 200)) throw new Error('A valid hand result ID is required.');
     const user = await UserDao.findById(userId);
     if (!user || user.isBanned) throw new Error('An active registered user is required.');
     const settings = await settingsDao.read();
@@ -31,11 +33,22 @@ exports.recordResult = async function(userId, netChips, settledAt = new Date()) 
     if (settings.season?.bucket && settledAt >= new Date(settings.season.startedAt)) {
         buckets.push(settings.season.bucket);
     }
-    return Promise.all(buckets.map((bucket) => MonthlyStats.findOneAndUpdate(
-        { userId: user._id, month: bucket },
-        { $inc: { netChips, handsPlayed: 1 } },
-        { upsert: true, returnDocument: 'after', runValidators: true, setDefaultsOnInsert: true }
-    )));
+    return Promise.all(buckets.map(async (bucket) => {
+        const filter = { userId: user._id, month: bucket,
+            ...(resultId ? { recordedResults: { $ne: resultId } } : {}) };
+        const update = { $inc: { netChips, handsPlayed: 1 },
+            ...(resultId ? { $addToSet: { recordedResults: resultId } } : {}) };
+        const options = { returnDocument: 'after', runValidators: true, setDefaultsOnInsert: true };
+        try {
+            return await MonthlyStats.findOneAndUpdate(filter, update, { ...options, upsert: true });
+        } catch (error) {
+            if (!resultId || error.code !== 11000) throw error;
+            // The bucket was created concurrently, or already contains this
+            // result. Retry without insertion; the result-ID condition makes
+            // a repeated settlement a no-op, including after a partial failure.
+            return MonthlyStats.findOneAndUpdate(filter, update, options);
+        }
+    }));
 };
 
 exports.readMonthly = async function(month, userId = null) {

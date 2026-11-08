@@ -1,4 +1,4 @@
-jest.mock('../model/LeaderboardDao', () => ({ readMonthly: jest.fn() }));
+jest.mock('../model/LeaderboardDao', () => ({ readMonthly: jest.fn(), recordResult: jest.fn() }));
 jest.mock('../model/UserDao', () => ({ findById: jest.fn() }));
 jest.mock('../model/LeaderboardSettingsDao', () => ({
     read: jest.fn(), monthlyBucket: jest.fn(), startSeason: jest.fn(), setMode: jest.fn(), reset: jest.fn(),
@@ -10,6 +10,7 @@ const users = require('../model/UserDao');
 const sessions = require('../util/AuthSession');
 const periods = require('../util/LeaderboardPeriod');
 const settings = require('../model/LeaderboardSettingsDao');
+const controller = require('./LeaderboardController');
 let server, base;
 const player = { _id: '507f1f77bcf86cd799439011', passwordHash: 'test-hash' };
 beforeAll(async () => {
@@ -29,6 +30,7 @@ beforeEach(() => {
     dao.readMonthly.mockResolvedValue({ topPlayers: [], currentPlayer: null });
     settings.read.mockResolvedValue({ mode: 'monthly' });
     settings.monthlyBucket.mockImplementation((config, month) => month);
+    dao.recordResult.mockResolvedValue([]);
 });
 test('guests can read rankings but cannot request another account personal rank', async () => {
     const response = await fetch(`${base}?userId=${player._id}`);
@@ -127,4 +129,34 @@ test('database failure returns an actionable error', async () => {
     const response = await fetch(base);
     expect(response.status).toBe(500);
     expect(await response.json()).toEqual({ error: 'Could not load the leaderboard.' });
+});
+
+describe('recordHand integration', () => {
+    const finished = (changes = {}) => ({ phase: 'done', ownerId: player._id,
+        handId: 'unique-hand', handStartBalance: 1000, balance: 1030,
+        settledAt: new Date('2026-11-08T12:00:00Z'), ...changes });
+    test.each([1030, 970, 1000])('records a finished hand with ending balance %s', async (balance) => {
+        const game = finished({ balance });
+        await controller.recordHand(game);
+        expect(dao.recordResult).toHaveBeenCalledWith(player._id, balance - 1000, game.settledAt, game.handId);
+    });
+    test.each([{ phase: 'decision' }, { ownerId: null }, { handId: null }])('skips unfinished or unowned hands %j', async (changes) => {
+        await controller.recordHand(finished(changes));
+        expect(dao.recordResult).not.toHaveBeenCalled();
+    });
+    test('real game folding records the ante loss using its authenticated owner ID', async () => {
+        const engine = require('../game');
+        const game = engine.getGame(engine.createGame(10).gameId);
+        game.ownerId = player._id;
+        engine.applyAction(game, 'fold');
+        await controller.recordHand(game);
+        expect(dao.recordResult).toHaveBeenCalledWith(player._id, -10, expect.any(Date), game.handId);
+    });
+    test('saving failures are logged without breaking gameplay', async () => {
+        dao.recordResult.mockRejectedValue(new Error('db down'));
+        const log = jest.spyOn(console, 'error').mockImplementation(() => {});
+        await expect(controller.recordHand(finished())).resolves.toBeUndefined();
+        expect(log).toHaveBeenCalled();
+        log.mockRestore();
+    });
 });

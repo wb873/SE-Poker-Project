@@ -62,3 +62,44 @@ test('rejects guest IDs, fractional scores and invalid dates before querying acc
     await expect(dao.recordResult(id, 10, new Date('invalid'))).rejects.toThrow('settlement date');
     expect(find).not.toHaveBeenCalled();
 });
+
+test('replayed settlements cannot increment the same leaderboard bucket twice', async () => {
+    jest.spyOn(users, 'findById').mockResolvedValue({ _id: id });
+    let total = 0;
+    const recorded = new Set();
+    jest.spyOn(dao.model, 'findOneAndUpdate').mockImplementation(async (filter, update, options) => {
+        const resultId = update.$addToSet.recordedResults;
+        if (recorded.has(resultId)) {
+            if (options.upsert) throw Object.assign(new Error('duplicate key'), { code: 11000 });
+            return null;
+        }
+        expect(filter.recordedResults).toEqual({ $ne: resultId });
+        recorded.add(resultId);
+        total += update.$inc.netChips;
+        return {};
+    });
+    const date = new Date('2026-11-08T12:00:00Z');
+    await Promise.all([dao.recordResult(id, 30, date, 'hand-a'), dao.recordResult(id, 30, date, 'hand-a')]);
+    await dao.recordResult(id, -10, date, 'hand-b');
+    expect(total).toBe(20);
+});
+
+test('retrying a partial monthly/seasonal save only increments the missing bucket', async () => {
+    jest.spyOn(users, 'findById').mockResolvedValue({ _id: id });
+    settings.read.mockResolvedValue({ season: { bucket: 'season:winter', startedAt: new Date('2026-11-01') } });
+    const totals = new Map();
+    let failSeason = true;
+    jest.spyOn(dao.model, 'findOneAndUpdate').mockImplementation(async (filter, update, options) => {
+        if (filter.month === 'season:winter' && failSeason) { failSeason = false; throw new Error('temporary failure'); }
+        if (totals.has(filter.month)) {
+            if (options.upsert) throw Object.assign(new Error('duplicate key'), { code: 11000 });
+            return null;
+        }
+        totals.set(filter.month, update.$inc.netChips);
+        return {};
+    });
+    const date = new Date('2026-11-08T12:00:00Z');
+    await expect(dao.recordResult(id, 30, date, 'hand-a')).rejects.toThrow('temporary failure');
+    await dao.recordResult(id, 30, date, 'hand-a');
+    expect([...totals.entries()]).toEqual([['2026-11', 30], ['season:winter', 30]]);
+});

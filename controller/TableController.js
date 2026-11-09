@@ -118,8 +118,8 @@ exports.registerTableHandlers = function (io, socket) {
   });
 };
 
-// Every few seconds: remove players who have been offline too long, delete
-// lobbies with no players left, and drop tables whose lobby is gone.
+// Every few seconds: remove players who have been offline too long from tables
+// on this server, delete lobbies with no players left, and drop tables whose lobby is gone.
 exports.startSweeper = function (io) {
   setInterval(async () => {
     try {
@@ -137,6 +137,8 @@ exports.startSweeper = function (io) {
           await closeLobby(io, lobbyId);
           continue;
         }
+        // Teammates' servers can share one database; only sweep tables this server runs
+        if (!tableGame.getTable(lobbyId)) continue;
         for (const name of lobby.players) {
           const key = `${lobbyId}|${name}`;
           if (online.has(key) || !lastSeen.has(key)) {

@@ -189,6 +189,7 @@ describe("sweeper", () => {
   test("removes a player who stays offline past the grace period, then deletes the empty lobby", async () => {
     LobbyDao.findAll.mockResolvedValue([lobby("S1", ["ghost"])]);
     LobbyDao.removePlayer.mockResolvedValue({ players: [] });
+    tableGame.sitDown(tableGame.getOrCreateTable(lobby("S1", ["ghost"])), "ghost");
     TableController.startSweeper(fakeIo());
 
     await jest.advanceTimersByTimeAsync(20 * 1000); // clock starts, still inside the grace period
@@ -206,6 +207,16 @@ describe("sweeper", () => {
     await jest.advanceTimersByTimeAsync(10 * 1000);
 
     expect(LobbyDao.deleteById).toHaveBeenCalledWith("S2");
+  });
+
+  test("leaves alone a lobby whose table runs on another server", async () => {
+    LobbyDao.findAll.mockResolvedValue([lobby("S4", ["elsewhere"])]);
+    TableController.startSweeper(fakeIo());
+
+    await jest.advanceTimersByTimeAsync(120 * 1000);
+
+    expect(LobbyDao.removePlayer).not.toHaveBeenCalled();
+    expect(LobbyDao.deleteById).not.toHaveBeenCalled();
   });
 
   test("keeps a player who is still connected", async () => {

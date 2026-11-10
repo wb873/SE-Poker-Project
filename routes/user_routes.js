@@ -1,8 +1,10 @@
 const express = require("express");
 const UserController = require("../controller/UserController");
 const AuthSession = require("../util/AuthSession");
+const ProfileController = require('../controller/ProfileController');
 
 const router = express.Router();
+router.get('/stats', AuthSession.requireUser, ProfileController.getStats);
 
 router.post("/register", UserController.register);           // P1
 router.get("/availability", UserController.checkAvailability); // P1

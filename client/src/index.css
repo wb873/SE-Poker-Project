@@ -211,6 +211,18 @@ a { color: var(--primary); }
 /* ---------- Misc ---------- */
 .tutorial_step { display: flex; gap: 14px; margin-bottom: 12px; }
 .step_num { width: 36px; height: 36px; border-radius: 50%; background: var(--primary); color: #00262d; display: grid; place-items: center; font-weight: 700; flex-shrink: 0; }
+.tutorial_highlight {
+  outline: 3px solid gold; outline-offset: 4px; border-radius: var(--radius);
+  box-shadow: 0 0 24px rgba(255, 215, 0, 0.45);
+  animation: tutorial_pulse 1.6s ease-in-out infinite;
+}
+@keyframes tutorial_pulse { 50% { outline-color: rgba(255, 215, 0, 0.45); } }
+.tutorial_coach {
+  position: fixed; left: 50%; bottom: 16px; transform: translateX(-50%); z-index: 50;
+  width: min(640px, calc(100% - 32px)); border-color: var(--primary);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.6);
+}
+.tutorial_coach_text { white-space: pre-line; line-height: 1.5; }
 .disclaimer_banner {
   background: rgba(239, 83, 80, 0.12); border: 1px solid var(--danger); color: #ffcdd2;
   padding: 10px 14px; border-radius: 10px; font-size: 13px; margin-top: 20px;
@@ -221,6 +233,22 @@ a { color: var(--primary); }
 .admin_message { text-align: left; overflow-wrap: anywhere; }
 .admin_text { white-space: pre-wrap; overflow-wrap: anywhere; }
 .admin_user { flex-wrap: wrap; }
+
+/* Monthly leaderboard shares the menu's panel and cyan accent styles. */
+.menu_layout { grid-template-columns: 190px minmax(0, 1fr) 290px; }
+.menu_sidebar { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.monthly_leaderboard h2 { font-size: 20px; }
+.monthly_leaderboard p { font-size: 13px; line-height: 1.5; }
+.leaderboard_table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 13px; margin-bottom: 14px; }
+.leaderboard_table caption { text-align: left; margin-bottom: 8px; }
+.leaderboard_table th, .leaderboard_table td { padding: 9px 4px; text-align: left; overflow-wrap: anywhere; }
+.leaderboard_table thead { color: var(--text_muted); }
+.leaderboard_table th:first-child, .leaderboard_table td:first-child { width: 42px; }
+.leaderboard_table th:last-child, .leaderboard_table td:last-child { width: 85px; text-align: right; font-variant-numeric: tabular-nums; }
+.leaderboard_table tbody tr { border-top: 1px solid var(--border); }
+.leaderboard_name { display: block; }
+.leaderboard_you { background: var(--primary_soft); color: var(--primary); }
+.leaderboard_personal { border-top: 3px solid var(--primary_dark); }
 
 @media (max-width: 800px) {
   .admin_columns { grid-template-columns: 1fr; }

@@ -47,7 +47,6 @@ io.on("connection", (socket) => {
   console.log(`Socket connected: ${socket.id}`);
   ChatController.registerChatHandlers(io, socket);
   TableController.registerTableHandlers(io, socket);
-  
   socket.on("disconnect", () => {
     console.log(`Socket disconnected: ${socket.id}`);
   });

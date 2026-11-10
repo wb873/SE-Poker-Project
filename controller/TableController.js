@@ -1,6 +1,7 @@
 const LobbyDao = require("../model/LobbyDao");
 const tableGame = require("../tableGame");
-const AuthSession = require("../util/AuthSession");
+const sessions = require('../util/AuthSession');
+const leaderboard = require('./LeaderboardController');
 const UserDao = require("../model/UserDao");
 
 // How often the sweeper runs, and how long a player may be offline before
@@ -12,22 +13,20 @@ const lastSeen = new Map(); // "lobbyId|username" -> last time seen connected
 
 const roomOf = (lobbyId) => `table:${lobbyId}`;
 
-// Saves finished hands to the players' accounts. Errors are logged, not thrown,
-// so one failed save doesn't break the table for everyone
-async function saveResults(table) {
-  for (const { userId, net } of tableGame.takeUnsaved(table)) {
-    if (net === 0) continue;
-    try {
-      await UserDao.applyHandResult(userId, net);
-    } catch (err) {
-      console.error("Could not save hand result:", err.message);
-    }
-  }
+// tableGame calls this inside settle for each logged-in player's hand, before
+// the seats of players who left are removed, so no result is lost. It records
+// the hand for the leaderboard and saves the win or loss to the account.
+// Errors are logged, not thrown, so one failed save doesn't break the table.
+function handSettled(hand) {
+  leaderboard.recordHand(hand);
+  const net = hand.balance - hand.handStartBalance;
+  if (net === 0) return;
+  UserDao.applyHandResult(hand.ownerId, net)
+    .catch((err) => console.error("Could not save hand result:", err.message));
 }
 
 // Sends every socket at the table its own view of the state
 function broadcast(io, table) {
-  saveResults(table);
   const ids = io.sockets.adapter.rooms.get(roomOf(table.lobbyId)) || [];
   for (const id of ids) {
     const socket = io.sockets.sockets.get(id);
@@ -52,10 +51,7 @@ async function closeLobby(io, lobbyId) {
 // Takes a player out of the lobby and the table. Deletes the lobby if nobody is left.
 async function removeFromLobby(io, lobbyId, username) {
   const table = tableGame.getTable(lobbyId);
-  if (table) {
-    tableGame.leave(table, username);
-    saveResults(table); // before closeLobby can delete the table with the results on it
-  }
+  if (table) tableGame.leave(table, username);
 
   const updated = await LobbyDao.removePlayer(lobbyId, username);
   if (updated && updated.players.length === 0) return closeLobby(io, lobbyId);
@@ -85,14 +81,14 @@ exports.registerTableHandlers = function (io, socket) {
       const lobby = await LobbyDao.findById(lobbyId);
       if (!lobby) return fail("Lobby not found.");
 
-      const name = username.trim();
-      // A token means a logged-in player. The name has to match the account,
-      // so nobody can sit down with someone else's balance
-      const account = token ? await AuthSession.userFromToken(token) : null;
-      if (token && !account) return fail("Please log in again.");
-      if (account && account.username !== name) return fail("That seat belongs to a different account.");
+      const user = token ? await sessions.authenticate(token) : null;
+      const name = user ? user.username : username.trim();
       if (!spectate && !lobby.players.includes(name))
         return fail("Join this lobby before sitting at its table.");
+
+      const existingSeat = tableGame.getTable(String(lobby._id))?.seats.get(name);
+      if (!spectate && existingSeat?.accountId && String(existingSeat.accountId) !== String(user?._id))
+        return fail('Sign in to rejoin this player’s seat.');
 
       if (socket.data.tableLobby) socket.leave(roomOf(socket.data.tableLobby));
       socket.data.tableLobby = String(lobby._id);
@@ -100,10 +96,12 @@ exports.registerTableHandlers = function (io, socket) {
       socket.join(roomOf(socket.data.tableLobby));
 
       const table = tableGame.getOrCreateTable(lobby);
-      if (!spectate) tableGame.sitDown(table, name, account);
+      table.onHandSettled = handSettled;
+      // Logged-in seats play with the account balance; guests get the starting 1,000
+      if (!spectate) tableGame.sitDown(table, name, user ? String(user._id) : null, user ? user.balance : null);
       broadcast(io, table);
     } catch (err) {
-      fail("Could not join the table.");
+      fail(err.status ? err.message : "Could not join the table.");
     }
   });
 
@@ -134,8 +132,8 @@ exports.registerTableHandlers = function (io, socket) {
   });
 };
 
-// Every few seconds: remove players who have been offline too long, delete
-// lobbies with no players left, and drop tables whose lobby is gone.
+// Every few seconds: remove players who have been offline too long from tables
+// on this server, delete lobbies with no players left, and drop tables whose lobby is gone.
 exports.startSweeper = function (io) {
   setInterval(async () => {
     try {
@@ -153,6 +151,8 @@ exports.startSweeper = function (io) {
           await closeLobby(io, lobbyId);
           continue;
         }
+        // Teammates' servers can share one database; only sweep tables this server runs
+        if (!tableGame.getTable(lobbyId)) continue;
         for (const name of lobby.players) {
           const key = `${lobbyId}|${name}`;
           if (online.has(key) || !lastSeen.has(key)) {

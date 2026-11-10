@@ -24,7 +24,10 @@ router.post("/start", optionalUser, (req, res) => {
   try {
     const ante = req.body?.ante ?? 10;
     const game = createGame(ante);
-    if (req.user) getGame(game.gameId).owner = req.user.username;
+    if (req.user) {
+      getGame(game.gameId).owner = req.user.username;
+      getGame(game.gameId).ownerId = String(req.user._id);
+    }
 
     res.status(201).json({
       success: true,
@@ -40,7 +43,7 @@ router.post("/start", optionalUser, (req, res) => {
 
 // Retrieve the current game state.
 // GET /api/game/current?gameId=YOUR_GAME_ID
-router.get("/current", (req, res) => {
+router.get("/current", optionalUser, (req, res) => {
   const { gameId } = req.query;
 
   if (typeof gameId !== "string" || !gameId) {
@@ -57,6 +60,8 @@ router.get("/current", (req, res) => {
     });
   }
 
+  if (game.ownerId && String(req.user?._id) !== game.ownerId)
+    return res.status(403).json({ error: 'This game belongs to another player.' });
   res.json({
     success: true,
     game: getPublicState(game),
@@ -67,7 +72,7 @@ router.get("/current", (req, res) => {
 // POST /api/game/current/action
 // Body: { "gameId": "...", "action": "raise" }
 //       { "gameId": "...", "action": "swap", "cardIndex": 0 }
-router.post("/current/action", (req, res) => {
+router.post("/current/action", optionalUser, async (req, res) => {
   const { gameId, action, cardIndex } = req.body ?? {};
   const game = getGame(gameId);
 
@@ -78,10 +83,13 @@ router.post("/current/action", (req, res) => {
     });
   }
 
+  if (game.ownerId && String(req.user?._id) !== game.ownerId)
+    return res.status(403).json({ error: 'This game belongs to another player.' });
   try {
     const updatedGame = applyAction(game, action, { cardIndex });
-    LeaderboardController.recordHand(game);
-    
+    if (game.phase === 'done') game.settledAt = new Date();
+    await LeaderboardController.recordHand(game);
+
     res.json({
       success: true,
       game: updatedGame,
@@ -96,7 +104,7 @@ router.post("/current/action", (req, res) => {
 
 // Start the next hand for the same game.
 // Body: { "gameId": "..." }
-router.post("/next", (req, res) => {
+router.post("/next", optionalUser, (req, res) => {
   const { gameId } = req.body ?? {};
   const game = getGame(gameId);
 
@@ -107,6 +115,8 @@ router.post("/next", (req, res) => {
     });
   }
 
+  if (game.ownerId && String(req.user?._id) !== game.ownerId)
+    return res.status(403).json({ error: 'This game belongs to another player.' });
   try {
     const updatedGame = nextHand(game);
 

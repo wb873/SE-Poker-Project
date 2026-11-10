@@ -1,4 +1,27 @@
 const tableGame = require("./tableGame");
+afterEach(() => { for (const id of tableGame.tableIds()) tableGame.deleteTable(id); });
+
+test('settlement snapshots include swap fees and distinct hand IDs, excluding guests', () => {
+  const table = tableGame.getOrCreateTable({ _id: 'snapshot-test', ante: 10, turnTimer: 30 });
+  tableGame.sitDown(table, 'member', 'account-id');
+  tableGame.sitDown(table, 'Guest');
+  table.onHandSettled = jest.fn();
+  tableGame.startHand(table);
+  tableGame.act(table, 'member', 'swap', 0);
+  tableGame.act(table, 'member', 'fold');
+  tableGame.act(table, 'Guest', 'fold');
+  expect(table.onHandSettled).toHaveBeenCalledTimes(1);
+  const first = table.onHandSettled.mock.calls[0][0];
+  expect(first.balance - first.handStartBalance).toBe(-30);
+  expect(first.playerHandRank).toEqual(expect.any(String));
+  tableGame.foldIdle(table);
+  expect(table.onHandSettled).toHaveBeenCalledTimes(1);
+  tableGame.startHand(table);
+  tableGame.foldIdle(table);
+  const next = table.onHandSettled.mock.calls[1][0];
+  expect(next.handId).not.toBe(first.handId);
+  expect(first.balance).toBe(970);
+});
 
 const VALUES = { 2: 2, 5: 5, 8: 8, 10: 10, Q: 12, K: 13, A: 14 };
 const c = (rank, suit) => ({ rank: String(rank), suit, value: VALUES[rank] });
@@ -137,76 +160,39 @@ test("at showdown raised hands are shown, folded hands stay hidden", () => {
 });
 
 describe("account balances", () => {
-  const account = (id, balance) => ({ _id: id, balance });
-
-  function tableWith(seats) {
-    const table = tableGame.getOrCreateTable({ _id: `acct${counter++}`, ante: 10, turnTimer: 30 });
-    for (const [name, acct] of seats) tableGame.sitDown(table, name, acct);
-    return table;
-  }
+  const tableFor = () => tableGame.getOrCreateTable({ _id: `acct${counter++}`, ante: 10, turnTimer: 30 });
 
   test("a logged-in seat starts with the account balance, a guest with 1,000", () => {
-    const table = tableWith([["a", account("u1", 5000)], ["guest", null]]);
-    expect(table.seats.get("a")).toMatchObject({ userId: "u1", balance: 5000 });
-    expect(table.seats.get("guest")).toMatchObject({ userId: null, balance: 1000 });
+    const table = tableFor();
+    tableGame.sitDown(table, "a", "u1", 5000);
+    tableGame.sitDown(table, "guest");
+    expect(table.seats.get("a").balance).toBe(5000);
+    expect(table.seats.get("guest").balance).toBe(1000);
   });
 
   test("sitting down again between hands picks up chips added to the account", () => {
-    const table = tableWith([["a", account("u1", 0)]]);
-    tableGame.sitDown(table, "a", account("u1", 500)); // refilled from the main menu
+    const table = tableFor();
+    tableGame.sitDown(table, "a", "u1", 0);
+    tableGame.sitDown(table, "a", "u1", 500); // refilled from the main menu
     expect(table.seats.get("a").balance).toBe(500);
   });
 
   test("sitting down again mid-hand keeps the seat's balance", () => {
-    const table = tableWith([["a", account("u1", 100)]]);
+    const table = tableFor();
+    tableGame.sitDown(table, "a", "u1", 100);
     tableGame.startHand(table);
-    tableGame.sitDown(table, "a", account("u1", 100)); // reconnect: the ante is already bet
+    tableGame.sitDown(table, "a", "u1", 100); // reconnect: the ante is already bet
     expect(table.seats.get("a").balance).toBe(90);
   });
 
-  test("settling records each logged-in player's net for the hand, not guests'", () => {
-    const table = tableWith([["a", account("u1", 1000)], ["b", account("u2", 1000)], ["guest", null]]);
-    tableGame.startHand(table);
-    // Dealer has Q-high, so does not qualify: a raiser wins the ante and gets the raise back
-    table.dealerHand = [c("Q", "♠"), c(10, "♥"), c(8, "♦"), c(5, "♠"), c(2, "♥")];
-    tableGame.act(table, "a", "raise");
-    tableGame.act(table, "b", "fold");
-    tableGame.act(table, "guest", "fold");
-    expect(tableGame.takeUnsaved(table)).toEqual([
-      { userId: "u1", net: 10 },
-      { userId: "u2", net: -10 },
-    ]);
-  });
-
-  test("a swap fee counts in the net", () => {
-    const table = tableWith([["a", account("u1", 1000)]]);
-    tableGame.startHand(table);
-    tableGame.act(table, "a", "swap", 0);
-    tableGame.act(table, "a", "fold");
-    expect(tableGame.takeUnsaved(table)).toEqual([{ userId: "u1", net: -30 }]); // ante 10 + swap 20
-  });
-
-  test("a player who leaves mid-hand still has their result recorded", () => {
-    const table = tableWith([["a", account("u1", 1000)], ["b", null]]);
-    tableGame.startHand(table);
-    tableGame.leave(table, "a");
-    tableGame.act(table, "b", "fold");
-    expect(table.seats.has("a")).toBe(false);
-    expect(tableGame.takeUnsaved(table)).toEqual([{ userId: "u1", net: -10 }]);
-  });
-
-  test("a player who sat the hand out has no result", () => {
-    const table = tableWith([["a", account("u1", 1000)], ["broke", account("u2", 5)]]);
+  test("the settled hand reports the net from the account balance", () => {
+    const table = tableFor();
+    table.onHandSettled = jest.fn();
+    tableGame.sitDown(table, "a", "u1", 5000);
     tableGame.startHand(table);
     tableGame.act(table, "a", "fold");
-    expect(tableGame.takeUnsaved(table)).toEqual([{ userId: "u1", net: -10 }]);
-  });
-
-  test("takeUnsaved empties the list so a result is saved once", () => {
-    const table = tableWith([["a", account("u1", 1000)]]);
-    tableGame.startHand(table);
-    tableGame.act(table, "a", "fold");
-    expect(tableGame.takeUnsaved(table)).toHaveLength(1);
-    expect(tableGame.takeUnsaved(table)).toEqual([]);
+    const hand = table.onHandSettled.mock.calls[0][0];
+    expect(hand.balance - hand.handStartBalance).toBe(-10);
+    expect(hand.balance).toBe(4990);
   });
 });

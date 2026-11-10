@@ -16,10 +16,15 @@ const userSchema = new mongoose.Schema(
     // Set when an admin picks a temporary password (P4); the player is offered
     // a change at each login until they choose their own
     mustChangePassword: { type: Boolean, default: false },
+    recordedStatsResults: { type: [String], default: [] },
     stats: {
       handsPlayed: { type: Number, default: 0 },
       handsWon: { type: Number, default: 0 },
       biggestPot: { type: Number, default: 0 },
+      totalWinnings: { type: Number, default: 0 },
+      biggestWin: { type: Number, default: 0 },
+      timesFolded: { type: Number, default: 0 },
+      bestHandRank: { type: Number, default: -1 },
     },
   },
   { timestamps: true }

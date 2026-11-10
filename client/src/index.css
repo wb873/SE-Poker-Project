@@ -211,6 +211,18 @@ a { color: var(--primary); }
 /* ---------- Misc ---------- */
 .tutorial_step { display: flex; gap: 14px; margin-bottom: 12px; }
 .step_num { width: 36px; height: 36px; border-radius: 50%; background: var(--primary); color: #00262d; display: grid; place-items: center; font-weight: 700; flex-shrink: 0; }
+.tutorial_highlight {
+  outline: 3px solid gold; outline-offset: 4px; border-radius: var(--radius);
+  box-shadow: 0 0 24px rgba(255, 215, 0, 0.45);
+  animation: tutorial_pulse 1.6s ease-in-out infinite;
+}
+@keyframes tutorial_pulse { 50% { outline-color: rgba(255, 215, 0, 0.45); } }
+.tutorial_coach {
+  position: fixed; left: 50%; bottom: 16px; transform: translateX(-50%); z-index: 50;
+  width: min(640px, calc(100% - 32px)); border-color: var(--primary);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.6);
+}
+.tutorial_coach_text { white-space: pre-line; line-height: 1.5; }
 .disclaimer_banner {
   background: rgba(239, 83, 80, 0.12); border: 1px solid var(--danger); color: #ffcdd2;
   padding: 10px 14px; border-radius: 10px; font-size: 13px; margin-top: 20px;

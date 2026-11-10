@@ -2,6 +2,7 @@ const LobbyDao = require("../model/LobbyDao");
 const tableGame = require("../tableGame");
 const sessions = require('../util/AuthSession');
 const leaderboard = require('./LeaderboardController');
+const UserDao = require("../model/UserDao");
 
 // How often the sweeper runs, and how long a player may be offline before
 // they lose their seat. When the last player is removed, the lobby is deleted.
@@ -11,6 +12,18 @@ const PLAYER_GRACE_MS = 30 * 1000;
 const lastSeen = new Map(); // "lobbyId|username" -> last time seen connected
 
 const roomOf = (lobbyId) => `table:${lobbyId}`;
+
+// tableGame calls this inside settle for each logged-in player's hand, before
+// the seats of players who left are removed, so no result is lost. It records
+// the hand for the leaderboard and saves the win or loss to the account.
+// Errors are logged, not thrown, so one failed save doesn't break the table.
+function handSettled(hand) {
+  leaderboard.recordHand(hand);
+  const net = hand.balance - hand.handStartBalance;
+  if (net === 0) return;
+  UserDao.applyHandResult(hand.ownerId, net)
+    .catch((err) => console.error("Could not save hand result:", err.message));
+}
 
 // Sends every socket at the table its own view of the state
 function broadcast(io, table) {
@@ -83,8 +96,9 @@ exports.registerTableHandlers = function (io, socket) {
       socket.join(roomOf(socket.data.tableLobby));
 
       const table = tableGame.getOrCreateTable(lobby);
-      table.onHandSettled = leaderboard.recordHand;
-      if (!spectate) tableGame.sitDown(table, name, user ? String(user._id) : null);
+      table.onHandSettled = handSettled;
+      // Logged-in seats play with the account balance; guests get the starting 1,000
+      if (!spectate) tableGame.sitDown(table, name, user ? String(user._id) : null, user ? user.balance : null);
       broadcast(io, table);
     } catch (err) {
       fail(err.status ? err.message : "Could not join the table.");

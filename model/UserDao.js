@@ -121,3 +121,21 @@ exports.setAdmin = (id, isAdmin) => User.findByIdAndUpdate(id, { isAdmin }, { re
 exports.countAdmins = () => User.countDocuments({ isAdmin: true });
 // $inc adds on the database side, so a hand finishing at the same moment isn't overwritten (A7)
 exports.addBalance = (id, amount) => User.findByIdAndUpdate(id, { $inc: { balance: amount } }, { returnDocument: 'after' }).select(ADMIN_FIELDS);
+
+// Saves one hand's win or loss (net is negative for a loss). $inc adds on the
+// database side, so a refill or admin add at the same moment isn't overwritten.
+// The balance check is part of the update so a loss can't go below 0; if the
+// account has less than the loss (it was playing at two tables), it goes to 0.
+exports.applyHandResult = async (id, net) => {
+  const updated = await User.findOneAndUpdate(
+    { _id: id, balance: { $gte: -net } },
+    { $inc: { balance: net } },
+    { returnDocument: 'after' }
+  ).select('balance');
+  if (updated || net >= 0) return updated;
+  return User.findOneAndUpdate(
+    { _id: id, balance: { $lt: -net } },
+    { $set: { balance: 0 } },
+    { returnDocument: 'after' }
+  ).select('balance');
+};

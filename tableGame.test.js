@@ -158,3 +158,41 @@ test("at showdown raised hands are shown, folded hands stay hidden", () => {
   expect(spectator.seats.find((s) => s.username === "b").hand).toBeNull();
   expect(spectator.canSwap).toBe(false);
 });
+
+describe("account balances", () => {
+  const tableFor = () => tableGame.getOrCreateTable({ _id: `acct${counter++}`, ante: 10, turnTimer: 30 });
+
+  test("a logged-in seat starts with the account balance, a guest with 1,000", () => {
+    const table = tableFor();
+    tableGame.sitDown(table, "a", "u1", 5000);
+    tableGame.sitDown(table, "guest");
+    expect(table.seats.get("a").balance).toBe(5000);
+    expect(table.seats.get("guest").balance).toBe(1000);
+  });
+
+  test("sitting down again between hands picks up chips added to the account", () => {
+    const table = tableFor();
+    tableGame.sitDown(table, "a", "u1", 0);
+    tableGame.sitDown(table, "a", "u1", 500); // refilled from the main menu
+    expect(table.seats.get("a").balance).toBe(500);
+  });
+
+  test("sitting down again mid-hand keeps the seat's balance", () => {
+    const table = tableFor();
+    tableGame.sitDown(table, "a", "u1", 100);
+    tableGame.startHand(table);
+    tableGame.sitDown(table, "a", "u1", 100); // reconnect: the ante is already bet
+    expect(table.seats.get("a").balance).toBe(90);
+  });
+
+  test("the settled hand reports the net from the account balance", () => {
+    const table = tableFor();
+    table.onHandSettled = jest.fn();
+    tableGame.sitDown(table, "a", "u1", 5000);
+    tableGame.startHand(table);
+    tableGame.act(table, "a", "fold");
+    const hand = table.onHandSettled.mock.calls[0][0];
+    expect(hand.balance - hand.handStartBalance).toBe(-10);
+    expect(hand.balance).toBe(4990);
+  });
+});

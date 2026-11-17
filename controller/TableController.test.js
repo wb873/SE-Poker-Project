@@ -15,6 +15,18 @@ const sessions = require('../util/AuthSession');
 const leaderboard = require('./LeaderboardController');
 const UserDao = require("../model/UserDao");
 
+// On Node 26, jest.useRealTimers() can delete the global timer functions instead of
+// restoring them: inside Jest's sandbox hasOwnProperty says they aren't on the global,
+// so @sinonjs/fake-timers removes them. Every later test then fails on clearTimeout.
+// Keep the real functions and put back any that went missing.
+const realTimers = { setTimeout, clearTimeout, setInterval, clearInterval, setImmediate, clearImmediate };
+function useRealTimers() {
+  jest.useRealTimers();
+  for (const [name, fn] of Object.entries(realTimers)) {
+    if (typeof globalThis[name] !== "function") globalThis[name] = fn;
+  }
+}
+
 function fakeIo() {
   const emit = jest.fn();
   const rooms = new Map();
@@ -90,7 +102,7 @@ describe('authenticated leaderboard settlement', () => {
       socket.handlers['table:deal']();
       await jest.advanceTimersByTimeAsync(30000);
       expect(leaderboard.recordHand).toHaveBeenCalledWith(expect.objectContaining({ result: 'fold', balance: 990 }));
-    } finally { jest.useRealTimers(); }
+    } finally { useRealTimers(); }
   });
   test('leaving mid-hand records the fold before the seat disappears', async () => {
     const socket = await join('LB4', 'valid-token');
@@ -187,7 +199,7 @@ describe("table:leave", () => {
 
 describe("sweeper", () => {
   beforeEach(() => jest.useFakeTimers());
-  afterEach(() => jest.useRealTimers());
+  afterEach(() => useRealTimers());
 
   test("removes a player who stays offline past the grace period, then deletes the empty lobby", async () => {
     LobbyDao.findAll.mockResolvedValue([lobby("S1", ["ghost"])]);

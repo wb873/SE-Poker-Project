@@ -1,8 +1,8 @@
 import React from "react";
 
-// A single playing card; pass face_down for hidden cards
-export default function PlayingCard({ card, face_down = false, big = false }) {
-  const size_class = big ? " big" : "";
+// A single playing card; pass face_down for hidden cards, big or small to resize
+export default function PlayingCard({ card, face_down = false, big = false, small = false }) {
+  const size_class = big ? " big" : small ? " small" : "";
   if (face_down || !card) return <div className={"card back" + size_class} />;
 
   const is_red = card.suit === "♥" || card.suit === "♦";

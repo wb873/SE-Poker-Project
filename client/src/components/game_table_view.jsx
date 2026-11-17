@@ -1,16 +1,20 @@
 import React from "react";
 import PlayingCard from "./playing_card.jsx";
 
+// Seats around the stadium-shaped table, as % of the table area.
+// Index 0 is the bottom centre, where you always sit; the rest go clockwise.
 const seat_positions = [
-  { left: "10%", top: "28%" },
-  { left: "17%", top: "58%" },
-  { left: "32%", top: "82%" },
-  { left: "50%", top: "90%" },
-  { left: "68%", top: "82%" },
-  { left: "83%", top: "58%" },
-  { left: "90%", top: "28%" },
+  { left: "50%", top: "94%" },
+  { left: "20%", top: "86%" },
+  { left: "4%", top: "50%" },
+  { left: "20%", top: "10%" },
+  { left: "80%", top: "10%" },
+  { left: "96%", top: "50%" },
+  { left: "80%", top: "86%" },
 ];
-const MY_POSITION = 3; // bottom centre
+const MY_POSITION = 0;
+// Other players fill the seats nearest the bottom first so a small table looks balanced
+const other_seat_order = [1, 6, 2, 5, 3, 4];
 
 const status_labels = { waiting: "Waiting", deciding: "Deciding...", raised: "Raised", folded: "Folded" };
 const result_labels = {
@@ -20,6 +24,16 @@ const result_labels = {
   fold: "Folded",
   dealer_not_qualified: "Dealer didn't qualify",
 };
+const HAND_SIZE = 5;
+
+function Avatar() {
+  return (
+    <svg className="seat_avatar_icon" viewBox="0 0 24 24" aria-hidden="true">
+      <circle cx="12" cy="8.5" r="4.5" />
+      <path d="M3.5 22c0-4.7 3.8-8 8.5-8s8.5 3.3 8.5 8z" />
+    </svg>
+  );
+}
 
 // Draws the poker table from a table state (the server's table:state shape).
 // The live table and the tutorial both render this, so they always look the same.
@@ -56,22 +70,36 @@ export default function GameTableView({
   const can_act = !locked && !is_spectator && phase === "decision" && me?.status === "deciding";
   const can_deal = !locked && !is_spectator && Boolean(me) && phase !== "decision";
   const swap_active = swap_mode && can_act && Boolean(table?.canSwap);
+  const timer_low = seconds_left <= 5 && phase === "decision";
 
   // You sit at the bottom; everyone else fills the remaining seats
-  const all_positions = seat_positions.map((_, index) => index);
-  const other_positions = me ? all_positions.filter((index) => index !== MY_POSITION) : all_positions;
+  const other_positions = me ? other_seat_order : [MY_POSITION, ...other_seat_order];
   const placed = [
     ...(me ? [{ seat: me, index: MY_POSITION }] : []),
     ...others.map((seat, i) => ({ seat, index: other_positions[i] })),
   ].filter((entry) => entry.index !== undefined);
 
   const player_names = table ? table.seats.map((seat) => seat.username) : (lobby?.players ?? []);
+  const antes_in = (table?.seats ?? []).filter((seat) => seat.inHand).length * (table?.ante ?? 0);
+
+  const seat_label = (seat) =>
+    phase === "done" && seat.result ? result_labels[seat.result] : status_labels[seat.status];
 
   return (
     <div className="table_page">
-      <div className="row" style={{ marginBottom: 8 }}>
-        <button className="btn" onClick={on_exit}>{exit_label}</button>
-        {is_spectator && <span className="tag cyan">Spectating</span>}
+      <div className="table_topbar">
+        <button className="btn small" onClick={on_exit}>{exit_label}</button>
+        <div className="table_title">
+          <span className="muted">Caribbean Stud</span>
+          {lobby && <b>{lobby.name}</b>}
+        </div>
+        <div className="table_topbar_right">
+          {is_spectator && <span className="tag cyan">Spectating</span>}
+          <div className={"table_timer" + (timer_low ? " low" : "") + hl("timer")}>
+            <span className="num">{phase === "decision" ? seconds_left : "—"}</span>
+            <span className="muted">{timer_label}</span>
+          </div>
+        </div>
       </div>
 
       {error && (
@@ -82,97 +110,56 @@ export default function GameTableView({
       )}
 
       {lobby && (
-        <div className={"panel" + hl("lobby")} style={{ marginBottom: 10 }}>
-          <b>{lobby.name}</b> <span className="muted">(Host: {lobby.host})</span>
-          <div className="muted" style={{ fontSize: 13 }}>Lobby code: {lobby.id}</div>
-          <div className="muted" style={{ fontSize: 13 }}>
-            Players: {player_names.join(", ")} · Ante ${lobby.ante} · {lobby.turnTimer}s timer ·
-            Side bets: {lobby.sideBets ? "Yes" : "No"} ·
-            Bots: {lobby.bots?.enabled ? `${lobby.bots.amount} (${lobby.bots.difficulty})` : "No"}
-          </div>
+        <div className={"table_lobby_info muted" + hl("lobby")}>
+          Code <b>{lobby.id}</b> · Host {lobby.host} · Players: {player_names.join(", ")} · Ante ${lobby.ante} ·{" "}
+          {lobby.turnTimer}s timer · Side bets: {lobby.sideBets ? "Yes" : "No"} · Bots:{" "}
+          {lobby.bots?.enabled ? `${lobby.bots.amount} (${lobby.bots.difficulty})` : "No"}
         </div>
       )}
 
       {/* Table and seats */}
       <div className={"table_wrap" + hl("seats")}>
-        <div className="felt" />
+        <div className="table_rail">
+          <div className="felt">
+            <div className="felt_line" />
+            <div className="felt_watermark">
+              CARIBBEAN <span>Stud</span>
+            </div>
+          </div>
+        </div>
 
         <div className="dealer_seat">
-          <div className="seat" style={{ position: "static", transform: "none", margin: "0 auto" }}>
-            <div className="circle">DEALER</div>
-          </div>
+          <div className="seat_avatar dealer"><Avatar /></div>
+          <div className="nameplate"><b>Dealer</b></div>
         </div>
 
-        <div className={"dealer_cards" + hl("dealer")}>
-          {table?.dealerHand
-            ? table.dealerHand.map((card, index) => <PlayingCard key={index} card={card} />)
-            : table?.dealerUpCard && (
-                <>
-                  {[0, 1, 2, 3].map((index) => <PlayingCard key={index} face_down />)}
-                  <PlayingCard card={table.dealerUpCard} />
-                </>
-              )}
+        <div className={"table_center" + hl("dealer")}>
+          {table && phase !== "waiting" && <div className="pot_label">Antes in: ${antes_in.toLocaleString()}</div>}
+          <div className="dealer_cards">
+            {table?.dealerHand
+              ? table.dealerHand.map((card, index) => <PlayingCard key={index} card={card} />)
+              : table?.dealerUpCard
+                ? (
+                    <>
+                      {[0, 1, 2, 3].map((index) => <PlayingCard key={index} face_down />)}
+                      <PlayingCard card={table.dealerUpCard} />
+                    </>
+                  )
+                : [0, 1, 2, 3, 4].map((index) => <div key={index} className="card_slot" />)}
+          </div>
+          {table?.dealerHandRank && <div className="pot_label">Dealer: {table.dealerHandRank}</div>}
         </div>
 
-        {placed.map(({ seat, index }) => (
-          <div key={seat.username} className={"seat" + (seat.isYou ? " you" : "")} style={seat_positions[index]}>
-            <div className="circle">{(seat.isYou ? "YOU" : seat.username).slice(0, 6)}</div>
-            <div className="status">
-              {phase === "done" && seat.result ? result_labels[seat.result] : status_labels[seat.status]}
-            </div>
-            <div className="muted">${seat.balance.toLocaleString()}</div>
-            {seat.inHand && <span className="ante_chip">ANTE ${table.ante}</span>}
-            {seat.handRank && <div className="muted">{seat.handRank}</div>}
-          </div>
-        ))}
-      </div>
-
-      {/* Controls area */}
-      <div className="table_controls">
-        <div className={"panel chat_box" + hl("chat")}>
-          <h3>Chat</h3>
-          <div className="chat_log">
-            {chat_log.map((entry, index) => (
-              <div key={index}><b>{entry.user}:</b> {entry.text}</div>
-            ))}
-          </div>
-          <form className="row" onSubmit={on_send_chat}>
-            <input className="input" placeholder="Say something..." value={chat_input} onChange={(event) => on_chat_input_change(event.target.value)} />
-            <button className="btn small" type="submit">Send</button>
-          </form>
-        </div>
-
-        <div>
-          <div className={"panel status_box" + hl("status")}>
-            <div className="big">{status_text}</div>
-            {can_deal && (
-              <div>
-                <button className="btn small primary" onClick={on_deal}>
-                  {phase === "waiting" ? "Deal" : "Next Hand"}
-                </button>
-              </div>
-            )}
-          </div>
-
-          <div className={"panel" + hl("balance")} style={{ marginTop: 10, textAlign: "center" }}>
-            Balance: ${me ? me.balance.toLocaleString() : "—"}
-            {table && (
-              <div className="muted">
-                Ante: ${table.ante} · Raise: ${table.raiseAmount}
-                <br />
-                Phase: {phase} · Swap: {me?.swapUsed ? "used" : `available ($${table.swapCost})`}
-              </div>
-            )}
-          </div>
-
-          <div className={"hand_row" + hl("hand")}>
-            {me?.hand?.map((card, index) => (
+        {/* Your hand sits on the felt in front of your seat */}
+        {me?.hand && (
+          <div className={"my_hand" + hl("hand")}>
+            {me.hand.map((card, index) => (
               <div
                 key={index}
+                className={swap_active ? "swappable" : undefined}
                 role={swap_active ? "button" : undefined}
                 tabIndex={swap_active ? 0 : undefined}
                 aria-label={swap_active ? `Swap ${card.rank}${card.suit}` : undefined}
-                style={swap_active ? { cursor: "pointer", outline: "2px dashed gold", borderRadius: 8 } : undefined}
                 onClick={swap_active ? () => on_swap_card(index) : undefined}
                 onKeyDown={
                   swap_active
@@ -189,55 +176,113 @@ export default function GameTableView({
               </div>
             ))}
           </div>
+        )}
 
-          {me && (me.handRank || table.dealerHandRank) && (
-            <div className={"panel" + hl("result")} style={{ textAlign: "center" }}>
-              {me.handRank && <p>Your hand: {me.handRank}</p>}
-              {table.dealerHandRank && <p>Dealer hand: {table.dealerHandRank}</p>}
-              {phase === "done" && me.result && <p>Result: {result_labels[me.result]}</p>}
+        {placed.map(({ seat, index }) => {
+          const show_cards = !seat.isYou && seat.inHand && seat.status !== "folded";
+          return (
+            <div
+              key={seat.username}
+              className={
+                "seat" +
+                (seat.isYou ? " you" : "") +
+                (seat.status === "deciding" && phase === "decision" ? " active" : "") +
+                (seat.status === "folded" ? " folded" : "")
+              }
+              style={seat_positions[index]}
+            >
+              {show_cards && (
+                <div className="seat_cards">
+                  {seat.hand
+                    ? seat.hand.map((card, i) => <PlayingCard key={i} card={card} small />)
+                    : Array.from({ length: HAND_SIZE }, (_, i) => <PlayingCard key={i} face_down small />)}
+                </div>
+              )}
+              <div className="seat_avatar"><Avatar /></div>
+              <div className="nameplate">
+                <b>{seat.isYou ? `${seat.username} (You)` : seat.username}</b>
+                <span className="chips">${seat.balance.toLocaleString()}</span>
+                <span className="seat_status">{seat_label(seat)}</span>
+              </div>
+              {seat.inHand && <span className="ante_chip">${table.ante}</span>}
+              {!seat.isYou && seat.handRank && <div className="seat_rank">{seat.handRank}</div>}
             </div>
-          )}
+          );
+        })}
+      </div>
+
+      {/* Bottom bar: actions, info, chat */}
+      <div className="table_controls">
+        <div className="controls_left">
+          <div className={"status_box" + hl("status")}>
+            <div className="big">{status_text}</div>
+            {can_deal && (
+              <button className="btn primary" onClick={on_deal}>
+                {phase === "waiting" ? "Deal" : "Next Hand"}
+              </button>
+            )}
+          </div>
 
           {!is_spectator && me && (
             <div className={"action_row" + hl("actions")}>
-              <button className="action_btn" disabled={!can_act} onClick={on_fold}>
+              <button className="action_btn fold" disabled={!can_act} onClick={on_fold}>
                 Fold
               </button>
               <button
-                className="action_btn"
+                className="action_btn swap"
                 disabled={!can_act || !table.canSwap}
                 onClick={on_toggle_swap}
                 title={me.swapUsed ? "You already swapped this hand" : `Replace one card for $${table.swapCost}`}
               >
                 {swap_active ? "Cancel swap" : "Swap Card"}
-                <br />
-                {me.swapUsed ? "used" : `$${table.swapCost}`}
+                <small>{me.swapUsed ? "used" : `$${table.swapCost}`}</small>
               </button>
               <button
-                className="action_btn main"
+                className="action_btn raise"
                 disabled={!can_act || me.balance < table.raiseAmount}
                 onClick={on_raise}
               >
                 Raise
-                <br />${table.raiseAmount}
+                <small>${table.raiseAmount}</small>
               </button>
             </div>
           )}
         </div>
 
-        <div>
-          <div className={"round_badge" + (seconds_left <= 5 && phase === "decision" ? " low" : "") + hl("timer")}>
-            <div>
-              <div className="num">{phase === "decision" ? seconds_left : "—"}</div>
-              <div className="muted">{timer_label}</div>
-            </div>
+        <div className="controls_mid">
+          <div className={"info_box" + hl("balance")}>
+            <div className="info_balance">Balance: <b>${me ? me.balance.toLocaleString() : "—"}</b></div>
+            {table && (
+              <div className="muted">
+                Ante ${table.ante} · Raise ${table.raiseAmount} · Swap{" "}
+                {me?.swapUsed ? "used" : `$${table.swapCost}`}
+              </div>
+            )}
           </div>
-          <div className={"round_badge" + hl("rank")}>
-            <div>
-              <div className="muted">Hand Rank</div>
-              <b>{me?.handRank || "Not revealed"}</b>
-            </div>
+          <div className={"info_box" + hl("rank")}>
+            <span className="muted">Hand rank </span>
+            <b>{me?.handRank || "Not revealed"}</b>
           </div>
+          {me && (me.handRank || table.dealerHandRank) && (
+            <div className={"info_box" + hl("result")}>
+              {me.handRank && <div>Your hand: {me.handRank}</div>}
+              {table.dealerHandRank && <div>Dealer hand: {table.dealerHandRank}</div>}
+              {phase === "done" && me.result && <div><b>Result: {result_labels[me.result]}</b></div>}
+            </div>
+          )}
+        </div>
+
+        <div className={"chat_box" + hl("chat")}>
+          <div className="chat_title">Chat</div>
+          <div className="chat_log">
+            {chat_log.map((entry, index) => (
+              <div key={index}><b>{entry.user}:</b> {entry.text}</div>
+            ))}
+          </div>
+          <form className="chat_form" onSubmit={on_send_chat}>
+            <input className="input" placeholder="Say something..." value={chat_input} onChange={(event) => on_chat_input_change(event.target.value)} />
+            <button className="btn small" type="submit">Send</button>
+          </form>
         </div>
       </div>
     </div>

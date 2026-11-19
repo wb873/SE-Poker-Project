@@ -124,7 +124,6 @@ export default function GameTableView({
 
   const seat_index = new Map(placed.map(({ seat, index }) => [seat.username, index]));
 
-  const player_names = table ? table.seats.map((seat) => seat.username) : (lobby?.players ?? []);
   const antes_in = (table?.seats ?? []).filter((seat) => seat.inHand).length * (table?.ante ?? 0);
 
   const seat_label = (seat) => {
@@ -159,7 +158,7 @@ export default function GameTableView({
 
       {lobby && (
         <div className={"table_lobby_info muted" + hl("lobby")}>
-          Code <b>{lobby.id}</b> · Host {lobby.host} · Players: {player_names.join(", ")} · Ante ${lobby.ante} ·{" "}
+          Code <b>{lobby.id}</b> · Host {lobby.host} · Ante ${lobby.ante} ·{" "}
           {lobby.turnTimer}s timer · Side bets: {lobby.sideBets ? "Yes" : "No"} · Bots:{" "}
           {describeBots(lobby.bots)}
         </div>

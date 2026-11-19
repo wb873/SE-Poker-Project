@@ -94,7 +94,14 @@ export default function LobbyBrowserPage() {
         style={{ marginBottom: 14 }}
         onSubmit={(event) => { event.preventDefault(); handle_join(code.trim(), code_password); }}
       >
-        <input className="input" placeholder="Lobby code" value={code} onChange={(e) => set_code(e.target.value)} />
+        <input
+          className="input"
+          placeholder="Lobby code (5 letters)"
+          maxLength={5}
+          autoCapitalize="characters"
+          value={code}
+          onChange={(e) => set_code(e.target.value.replace(/[^a-z]/gi, "").toUpperCase())}
+        />
         <input className="input" type="password" placeholder="Password (private lobbies)" value={code_password} onChange={(e) => set_code_password(e.target.value)} />
         <button className="btn primary" type="submit" disabled={!code.trim() || joining_id !== null}>Join with Code</button>
       </form>

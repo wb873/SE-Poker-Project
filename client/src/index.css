@@ -232,6 +232,19 @@ a { color: var(--primary); }
 }
 .seat_avatar.dealer { border-color: #d4af37; }
 .seat_avatar_icon { width: 46px; height: 46px; fill: #c9ced3; }
+.seat_avatar.bot { background: radial-gradient(circle at 50% 35%, #4d6470, #1d2a31); border-color: #7fb3c4; place-items: center; }
+.seat_avatar_icon.bot { width: 40px; height: 40px; fill: #b9dbe6; }
+.seat_avatar_icon.bot .eye { fill: #00e5ff; }
+.bot_tag {
+  margin-left: 5px; padding: 0 5px; border-radius: 4px; font-size: 9px; font-weight: 800; letter-spacing: 0.5px;
+  vertical-align: 1px; background: #7fb3c4; color: #0b1418;
+}
+.bot_tag.easy { background: #8fcf8f; }
+.bot_tag.medium { background: #e6c46b; }
+.bot_tag.hard { background: #e58b7c; }
+.bot_change { font-size: 13px; color: #9fd0de; }
+.bot_difficulty_row { margin-top: 8px; align-items: center; }
+.bot_difficulty_row span { min-width: 48px; }
 .nameplate {
   margin-top: -10px; padding: 12px 10px 5px; min-width: 112px; border-radius: 8px;
   background: linear-gradient(180deg, #2c3035, #15171a); border: 1px solid #44494f;

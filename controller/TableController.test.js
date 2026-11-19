@@ -313,3 +313,79 @@ describe("account balances at the table", () => {
     log.mockRestore();
   });
 });
+
+describe("bots", () => {
+  const botLobby = (id, players = ["a"]) => ({ ...lobby(id, players), bots: { enabled: true, amount: 2, difficulties: ["medium", "medium"] } });
+  async function seatWithBots(id) {
+    LobbyDao.findById.mockResolvedValue(botLobby(id));
+    const io = fakeIo();
+    const socket = fakeSocket();
+    io.connect(socket);
+    TableController.registerTableHandlers(io, socket);
+    await socket.handlers["table:join"]({ lobbyId: id, username: "a" });
+    return { io, socket, table: tableGame.getTable(id) };
+  }
+  const botSeats = (table) => [...table.seats.values()].filter((seat) => seat.isBot);
+
+  beforeEach(() => jest.useFakeTimers());
+  afterEach(() => useRealTimers());
+
+  test("joining a lobby with bots shows them at the table", async () => {
+    const { socket } = await seatWithBots("B1");
+    const state = socket.emit.mock.calls.filter(([event]) => event === "table:state").pop()[1];
+    expect(state.seats.filter((seat) => seat.isBot)).toHaveLength(2);
+  });
+
+  // Seat order at these tables: a bot, then the player, then the other bot
+  const turnOrder = (table) =>
+    [...table.seats].sort(([, x], [, y]) => x.seatNumber - y.seatNumber).map(([key]) => key);
+
+  test("bots take their turns on their own, and the hand waits for the player", async () => {
+    const { socket, table } = await seatWithBots("B2");
+    const [firstBot, player, lastBot] = turnOrder(table);
+    expect(player).toBe("a");
+
+    socket.handlers["table:deal"]();
+    expect(table.currentTurn).toBe(firstBot);
+
+    socket.emit.mockClear();
+    await jest.advanceTimersByTimeAsync(2500);
+    expect(table.seats.get(firstBot).status).not.toBe("deciding");
+    expect(table.currentTurn).toBe("a");
+    expect(socket.emit).toHaveBeenCalledWith("table:state", expect.anything());
+
+    await jest.advanceTimersByTimeAsync(10000); // the bot after the player is still waiting
+    expect(table.seats.get(lastBot).status).toBe("deciding");
+
+    socket.handlers["table:action"]({ action: "fold" });
+    expect(table.currentTurn).toBe(lastBot);
+    await jest.advanceTimersByTimeAsync(2500);
+    expect(table.phase).toBe("done");
+  });
+
+  test("acting before your turn shows an error", async () => {
+    const { socket, table } = await seatWithBots("B3");
+    socket.handlers["table:deal"]();
+    expect(table.currentTurn).not.toBe("a");
+    socket.handlers["table:action"]({ action: "raise" });
+    expect(socket.emit).toHaveBeenCalledWith("table:error", "It's not your turn yet.");
+  });
+
+  test("when the player's turn times out they fold and the bots carry on", async () => {
+    const { socket, table } = await seatWithBots("B5");
+    socket.handlers["table:deal"]();
+    await jest.advanceTimersByTimeAsync(2500 + 30000 + 2500);
+    expect(table.seats.get("a").status).toBe("folded");
+    expect(table.phase).toBe("done");
+  });
+
+  test("bots don't keep a table open once the last player leaves", async () => {
+    const { socket } = await seatWithBots("B4");
+    socket.handlers["table:deal"]();
+    LobbyDao.removePlayer.mockResolvedValue({ players: [] });
+    await socket.handlers["table:leave"]();
+    expect(LobbyDao.deleteById).toHaveBeenCalledWith("B4");
+    expect(tableGame.getTable("B4")).toBeUndefined();
+    await jest.advanceTimersByTimeAsync(5000); // pending bot moves were cancelled
+  });
+});

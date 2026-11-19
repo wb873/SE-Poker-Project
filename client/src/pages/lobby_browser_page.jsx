@@ -4,6 +4,7 @@ import PageHeader from "../components/page_header.jsx";
 import { use_session } from "../session.jsx";
 import { API_URL } from "../api_config.js";
 import { join_lobby } from "../lobby_api.js";
+import { describeBots } from "../bot_summary.mjs";
 
 // Lobby browser with filters and join (stories L3, L2)
 export default function LobbyBrowserPage() {
@@ -110,7 +111,7 @@ export default function LobbyBrowserPage() {
               <div className="muted" style={{ fontSize: 13 }}>
                 {seats_taken(lobby)}/{lobby.maxPlayers} seats · Ante ${lobby.ante.toLocaleString()} · {lobby.turnTimer}s timer
                 · Side bets: {lobby.sideBets ? "Yes" : "No"}
-                · Bots: {lobby.bots?.enabled ? `${lobby.bots.amount} (${lobby.bots.difficulty})` : "No"}
+                · Bots: {describeBots(lobby.bots)}
               </div>
               <div className="muted" style={{ fontSize: 13 }}>Players: {lobby.players.join(", ")}</div>
             </div>

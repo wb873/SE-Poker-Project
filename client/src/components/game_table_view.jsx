@@ -1,5 +1,6 @@
 import React from "react";
 import PlayingCard from "./playing_card.jsx";
+import { describeBots } from "../bot_summary.mjs";
 
 // Seats around the stadium-shaped table, as % of the table area.
 // Index 0 is the bottom centre, where you always sit; the rest go clockwise.
@@ -26,7 +27,19 @@ const result_labels = {
 };
 const HAND_SIZE = 5;
 
-function Avatar() {
+function Avatar({ bot = false }) {
+  if (bot) {
+    return (
+      <svg className="seat_avatar_icon bot" viewBox="0 0 24 24" aria-hidden="true">
+        <rect x="11" y="1.5" width="2" height="3" />
+        <circle cx="12" cy="1.8" r="1.4" />
+        <rect x="4" y="5" width="16" height="11" rx="3" />
+        <circle className="eye" cx="9" cy="10.5" r="1.8" />
+        <circle className="eye" cx="15" cy="10.5" r="1.8" />
+        <path d="M5 24c0-3.9 3-6.5 7-6.5s7 2.6 7 6.5z" />
+      </svg>
+    );
+  }
   return (
     <svg className="seat_avatar_icon" viewBox="0 0 24 24" aria-hidden="true">
       <circle cx="12" cy="8.5" r="4.5" />
@@ -67,23 +80,36 @@ export default function GameTableView({
   const phase = table?.phase ?? "waiting";
   const me = table?.seats.find((seat) => seat.isYou) ?? null;
   const others = (table?.seats ?? []).filter((seat) => !seat.isYou);
-  const can_act = !locked && !is_spectator && phase === "decision" && me?.status === "deciding";
+  // The live table takes turns and marks whose it is; the tutorial doesn't, so anyone deciding can act
+  const takes_turns = (table?.seats ?? []).some((seat) => "isTurn" in seat);
+  const is_turn = (seat) => (takes_turns ? Boolean(seat?.isTurn) : seat?.status === "deciding");
+  const can_act = !locked && !is_spectator && phase === "decision" && me?.status === "deciding" && is_turn(me);
   const can_deal = !locked && !is_spectator && Boolean(me) && phase !== "decision";
   const swap_active = swap_mode && can_act && Boolean(table?.canSwap);
   const timer_low = seconds_left <= 5 && phase === "decision";
 
-  // You sit at the bottom; everyone else fills the remaining seats
+  // Seats keep their place around the table, turned so you're always at the bottom.
+  // States without seat numbers (the tutorial) fill the seats nearest the bottom first.
+  const has_seat_numbers = (table?.seats ?? []).every((seat) => Number.isInteger(seat.seatNumber));
   const other_positions = me ? other_seat_order : [MY_POSITION, ...other_seat_order];
-  const placed = [
-    ...(me ? [{ seat: me, index: MY_POSITION }] : []),
-    ...others.map((seat, i) => ({ seat, index: other_positions[i] })),
-  ].filter((entry) => entry.index !== undefined);
+  const placed = has_seat_numbers
+    ? (table?.seats ?? []).map((seat) => ({
+        seat,
+        index: (seat.seatNumber - (me?.seatNumber ?? 0) + seat_positions.length) % seat_positions.length,
+      }))
+    : [
+        ...(me ? [{ seat: me, index: MY_POSITION }] : []),
+        ...others.map((seat, i) => ({ seat, index: other_positions[i] })),
+      ].filter((entry) => entry.index !== undefined);
 
   const player_names = table ? table.seats.map((seat) => seat.username) : (lobby?.players ?? []);
   const antes_in = (table?.seats ?? []).filter((seat) => seat.inHand).length * (table?.ante ?? 0);
 
-  const seat_label = (seat) =>
-    phase === "done" && seat.result ? result_labels[seat.result] : status_labels[seat.status];
+  const seat_label = (seat) => {
+    if (phase === "done" && seat.result) return result_labels[seat.result];
+    if (takes_turns && seat.status === "deciding") return seat.isTurn ? (seat.isBot ? "Thinking..." : "Their turn") : "Waiting";
+    return status_labels[seat.status];
+  };
 
   return (
     <div className="table_page">
@@ -113,7 +139,7 @@ export default function GameTableView({
         <div className={"table_lobby_info muted" + hl("lobby")}>
           Code <b>{lobby.id}</b> · Host {lobby.host} · Players: {player_names.join(", ")} · Ante ${lobby.ante} ·{" "}
           {lobby.turnTimer}s timer · Side bets: {lobby.sideBets ? "Yes" : "No"} · Bots:{" "}
-          {lobby.bots?.enabled ? `${lobby.bots.amount} (${lobby.bots.difficulty})` : "No"}
+          {describeBots(lobby.bots)}
         </div>
       )}
 
@@ -186,7 +212,7 @@ export default function GameTableView({
               className={
                 "seat" +
                 (seat.isYou ? " you" : "") +
-                (seat.status === "deciding" && phase === "decision" ? " active" : "") +
+                (phase === "decision" && seat.status === "deciding" && is_turn(seat) ? " active" : "") +
                 (seat.status === "folded" ? " folded" : "")
               }
               style={seat_positions[index]}
@@ -198,9 +224,16 @@ export default function GameTableView({
                     : Array.from({ length: HAND_SIZE }, (_, i) => <PlayingCard key={i} face_down small />)}
                 </div>
               )}
-              <div className="seat_avatar"><Avatar /></div>
+              <div className={"seat_avatar" + (seat.isBot ? " bot" : "")}><Avatar bot={seat.isBot} /></div>
               <div className="nameplate">
-                <b>{seat.isYou ? `${seat.username} (You)` : seat.username}</b>
+                <b>
+                  {seat.isYou ? `${seat.username} (You)` : seat.username}
+                  {seat.isBot && (
+                    <span className={"bot_tag" + (seat.difficulty ? ` ${seat.difficulty}` : "")}>
+                      BOT{seat.difficulty ? ` · ${seat.difficulty.toUpperCase()}` : ""}
+                    </span>
+                  )}
+                </b>
                 <span className="chips">${seat.balance.toLocaleString()}</span>
                 <span className="seat_status">{seat_label(seat)}</span>
               </div>
@@ -216,6 +249,11 @@ export default function GameTableView({
         <div className="controls_left">
           <div className={"status_box" + hl("status")}>
             <div className="big">{status_text}</div>
+            {table?.botChanges?.map((change) => (
+              <div key={change.left} className="bot_change">
+                {change.left} ran out of chips and left. {change.joined} took the seat.
+              </div>
+            ))}
             {can_deal && (
               <button className="btn primary" onClick={on_deal}>
                 {phase === "waiting" ? "Deal" : "Next Hand"}

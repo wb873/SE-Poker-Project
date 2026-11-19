@@ -24,7 +24,7 @@ function lobbyData(overrides = {}) {
     ante: 10,
     turnTimer: 30,
     sideBets: true,
-    bots: { enabled: false, amount: 0, difficulty: "medium" },
+    bots: { enabled: false, amount: 0, difficulties: [] },
     players: ["host1"],
     ...overrides,
   };
@@ -70,11 +70,11 @@ describe("create", () => {
 
   dbTest("stores bot settings", async () => {
     const lobby = await LobbyDao.create(
-      lobbyData({ bots: { enabled: true, amount: 2, difficulty: "hard" } })
+      lobbyData({ bots: { enabled: true, amount: 2, difficulties: ["easy", "hard"] } })
     );
     expect(lobby.bots.enabled).toBe(true);
     expect(lobby.bots.amount).toBe(2);
-    expect(lobby.bots.difficulty).toBe("hard");
+    expect([...lobby.bots.difficulties]).toEqual(["easy", "hard"]);
   });
 
   dbTest("rejects a missing name", async () => {
@@ -100,7 +100,7 @@ describe("create", () => {
 
   dbTest("rejects an invalid bot difficulty", async () => {
     await expect(
-      LobbyDao.create(lobbyData({ bots: { enabled: true, amount: 1, difficulty: "insane" } }))
+      LobbyDao.create(lobbyData({ bots: { enabled: true, amount: 1, difficulties: ["insane"] } }))
     ).rejects.toThrow();
   });
 
@@ -178,7 +178,7 @@ describe("addPlayer", () => {
 
   dbTest("counts bots as taken seats", async () => {
     const lobby = await LobbyDao.create(
-      lobbyData({ maxPlayers: 3, bots: { enabled: true, amount: 1, difficulty: "easy" } })
+      lobbyData({ maxPlayers: 3, bots: { enabled: true, amount: 1, difficulties: ["easy"] } })
     );
     expect((await LobbyDao.addPlayer(String(lobby._id), "bob")).players).toHaveLength(2);
     expect(await LobbyDao.addPlayer(String(lobby._id), "carol")).toBeNull();

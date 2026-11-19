@@ -13,7 +13,8 @@ const lobbySchema = new mongoose.Schema(
     bots: {
       enabled: { type: Boolean, default: false },
       amount: { type: Number, default: 0 },
-      difficulty: { type: String, enum: ["easy", "medium", "hard"], default: "medium" },
+      // One difficulty per bot, in seating order
+      difficulties: { type: [{ type: String, enum: ["easy", "medium", "hard"] }], default: [] },
     },
     players: { type: [String], default: [] },
     status: { type: String, enum: ["waiting", "in_progress"], default: "waiting" },

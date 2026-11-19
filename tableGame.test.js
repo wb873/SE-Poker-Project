@@ -17,7 +17,8 @@ test('settlement snapshots include swap fees and distinct hand IDs, excluding gu
   tableGame.foldIdle(table);
   expect(table.onHandSettled).toHaveBeenCalledTimes(1);
   tableGame.startHand(table);
-  tableGame.foldIdle(table);
+  tableGame.foldIdle(table); // member's turn times out
+  tableGame.foldIdle(table); // then Guest's
   const next = table.onHandSettled.mock.calls[1][0];
   expect(next.handId).not.toBe(first.handId);
   expect(first.balance).toBe(970);
@@ -68,7 +69,7 @@ test("other players' cards are hidden until the showdown", () => {
   expect(view.dealerHand).toBeNull();
 });
 
-test("running out the timer folds everyone still deciding", () => {
+test("running out the timer folds the player whose turn it is", () => {
   const table = newTable();
   tableGame.act(table, "a", "raise");
   tableGame.foldIdle(table);
@@ -143,7 +144,8 @@ test("leaving mid-hand folds, and the seat is removed once the hand settles", ()
 
 test("leaving between hands removes the seat immediately", () => {
   const table = newTable();
-  tableGame.foldIdle(table); // settles the hand
+  tableGame.foldIdle(table); // a's turn times out
+  tableGame.foldIdle(table); // b's turn times out, which settles the hand
   tableGame.leave(table, "a");
   expect(table.seats.has("a")).toBe(false);
 });
@@ -194,5 +196,70 @@ describe("account balances", () => {
     const hand = table.onHandSettled.mock.calls[0][0];
     expect(hand.balance - hand.handStartBalance).toBe(-10);
     expect(hand.balance).toBe(4990);
+  });
+});
+
+describe("taking turns", () => {
+  test("turns go around the table in seat order", () => {
+    const table = newTable(["a", "b", "c"]);
+    const order = [...table.seats.values()].sort((x, y) => x.seatNumber - y.seatNumber).map((seat) => seat.username);
+    for (const name of order) {
+      expect(table.currentTurn).toBe(name);
+      tableGame.act(table, name, "fold");
+    }
+    expect(table.phase).toBe("done");
+    expect(table.currentTurn).toBeNull();
+  });
+
+  test("acting out of turn is refused", () => {
+    const table = newTable();
+    const waiting = table.currentTurn === "a" ? "b" : "a";
+    expect(() => tableGame.act(table, waiting, "raise")).toThrow("It's not your turn yet.");
+    expect(table.seats.get(waiting).status).toBe("deciding");
+  });
+
+  test("a swap keeps the turn, raise or fold passes it on", () => {
+    const table = newTable();
+    const first = table.currentTurn;
+    tableGame.act(table, first, "swap", 0);
+    expect(table.currentTurn).toBe(first);
+    tableGame.act(table, first, "raise");
+    expect(table.currentTurn).not.toBe(first);
+  });
+
+  test("each turn gets the full turn timer", () => {
+    const table = newTable();
+    table.deadline = 0;
+    tableGame.act(table, table.currentTurn, "fold");
+    expect(table.deadline).toBeGreaterThan(Date.now() + 29000);
+  });
+
+  test("the timer folds only the player whose turn it is", () => {
+    const table = newTable();
+    const first = table.currentTurn;
+    tableGame.foldIdle(table);
+    expect(table.seats.get(first).status).toBe("folded");
+    expect([...table.seats.values()].filter((seat) => seat.status === "deciding")).toHaveLength(1);
+  });
+
+  test("leaving on your turn passes the turn on", () => {
+    const table = newTable();
+    const first = table.currentTurn;
+    tableGame.leave(table, first);
+    expect(table.currentTurn).not.toBe(first);
+    expect(table.phase).toBe("decision");
+  });
+
+  test("only the player whose turn it is can swap", () => {
+    const table = newTable();
+    const waiting = table.currentTurn === "a" ? "b" : "a";
+    expect(tableGame.publicState(table, table.currentTurn).canSwap).toBe(true);
+    expect(tableGame.publicState(table, waiting).canSwap).toBe(false);
+  });
+
+  test("players can see whose turn it is", () => {
+    const table = newTable();
+    const seats = tableGame.publicState(table, "a").seats;
+    expect(seats.filter((seat) => seat.isTurn).map((seat) => seat.username)).toEqual([table.currentTurn]);
   });
 });

@@ -116,6 +116,64 @@ test("a losing raise loses both bets", () => {
   expect(table.seats.get("a").balance).toBe(970);
 });
 
+describe("how much each seat won or lost", () => {
+  const netOf = (table, name) => tableGame.publicState(table, name).seats.find((seat) => seat.isYou).net;
+
+  test("a win shows the ante plus the raise payout, a fold shows the lost ante", () => {
+    const table = newTable();
+    table.seats.get("a").hand = hand5(c("A", "♠"), c("A", "♥"), c("K", "♦"), c(8, "♣"), c(5, "♠"));
+    table.dealerHand = hand5(c("K", "♠"), c("K", "♥"), c("Q", "♦"), c(8, "♦"), c(2, "♠"));
+    tableGame.act(table, "a", "raise");
+    expect(netOf(table, "a")).toBeNull(); // hidden until the hand is over
+    tableGame.act(table, "b", "fold");
+    expect(netOf(table, "a")).toBe(30);
+    expect(netOf(table, "b")).toBe(-10);
+  });
+
+  test("a loss shows both bets lost", () => {
+    const table = newTable();
+    table.seats.get("a").hand = hand5(c(2, "♠"), c(2, "♥"), c("K", "♦"), c(8, "♣"), c(5, "♠"));
+    table.dealerHand = hand5(c("K", "♠"), c("K", "♥"), c("Q", "♦"), c(8, "♦"), c(10, "♠"));
+    tableGame.act(table, "a", "raise");
+    tableGame.act(table, "b", "fold");
+    expect(netOf(table, "a")).toBe(-30);
+  });
+
+  test("a dealer who doesn't qualify pays the ante; a tie pays nothing", () => {
+    const noQualify = newTable();
+    noQualify.seats.get("a").hand = hand5(c(2, "♠"), c(5, "♥"), c("K", "♦"), c(8, "♣"), c(10, "♠"));
+    noQualify.dealerHand = hand5(c(2, "♦"), c(5, "♣"), c(8, "♦"), c(10, "♦"), c("Q", "♠"));
+    tableGame.act(noQualify, "a", "raise");
+    tableGame.act(noQualify, "b", "fold");
+    expect(netOf(noQualify, "a")).toBe(10);
+
+    const tie = newTable();
+    tie.seats.get("a").hand = hand5(c("K", "♠"), c("K", "♥"), c("Q", "♦"), c(8, "♦"), c(2, "♠"));
+    tie.dealerHand = hand5(c("K", "♦"), c("K", "♣"), c("Q", "♠"), c(8, "♣"), c(2, "♥"));
+    tableGame.act(tie, "a", "raise");
+    tableGame.act(tie, "b", "fold");
+    expect(tie.seats.get("a").result).toBe("push");
+    expect(netOf(tie, "a")).toBe(0);
+  });
+
+  test("the next hand clears it", () => {
+    const table = newTable();
+    tableGame.act(table, "a", "fold");
+    tableGame.act(table, "b", "fold");
+    tableGame.startHand(table);
+    expect(table.seats.get("a").net).toBeNull();
+  });
+});
+
+test("the dealer's scoring cards are sent only once the hand is over", () => {
+  const table = newTable();
+  table.dealerHand = hand5(c("K", "♠"), c(2, "♥"), c("K", "♦"), c(8, "♦"), c(5, "♠"));
+  expect(tableGame.publicState(table, "a").dealerHighlight).toBeNull();
+  tableGame.act(table, "a", "fold");
+  tableGame.act(table, "b", "fold");
+  expect(tableGame.publicState(table, "a").dealerHighlight).toEqual([0, 2]);
+});
+
 test("a seat without enough chips sits the hand out", () => {
   const table = tableGame.getOrCreateTable({ _id: `test${counter++}`, ante: 10, turnTimer: 30 });
   tableGame.sitDown(table, "a");

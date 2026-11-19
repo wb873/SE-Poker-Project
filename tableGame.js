@@ -3,6 +3,7 @@ const {
   evaluateHand,
   compareHands,
   dealerQualifies,
+  scoringCards,
   STARTING_BALANCE,
 } = require("./game");
 
@@ -144,6 +145,7 @@ function startHand(table) {
     seat.hand = [];
     seat.handRank = null;
     seat.result = null;
+    seat.net = null;
     seat.swapUsed = false;
     if (seat.balance >= table.ante) {
       seat.handStartBalance = seat.balance;
@@ -198,14 +200,17 @@ function settle(table) {
     const player = evaluateHand(seat.hand);
     seat.handRank = player.rank;
 
+    // seat.net is what the hand's bets won or lost (swap fees aside), for the chip animation
     if (seat.status === "folded") {
       seat.result = "fold";
+      seat.net = -ante;
       continue;
     }
     if (seat.status !== "raised") continue;
 
     if (!qualifies) {
       seat.balance += ante * 2 + raise;
+      seat.net = ante;
       seat.result = "dealer_not_qualified";
       seat.message = "Dealer does not qualify. Your ante wins even money and your raise is returned.";
       continue;
@@ -214,13 +219,16 @@ function settle(table) {
     const comparison = compareHands(seat.hand, table.dealerHand);
     if (comparison > 0) {
       seat.balance += ante * 2 + raise * (player.payout + 1);
+      seat.net = ante + raise * player.payout;
       seat.result = "win";
       seat.message = `You win with ${player.rank}! Raise pays ${player.payout}:1.`;
     } else if (comparison < 0) {
+      seat.net = -(ante + raise);
       seat.result = "loss";
       seat.message = `Dealer wins with ${dealer.rank}. You lose both bets.`;
     } else {
       seat.balance += ante + raise;
+      seat.net = 0;
       seat.result = "push";
       seat.message = "It's a tie. Both bets are returned.";
     }
@@ -378,6 +386,7 @@ function publicState(table, viewer) {
     dealerUpCard: table.dealerHand.length ? strip(table.dealerHand[0]) : null,
     dealerHand: done ? table.dealerHand.map(strip) : null,
     dealerHandRank: done ? table.dealerHandRank : null,
+    dealerHighlight: done && table.dealerHand.length === 5 ? scoringCards(table.dealerHand) : null,
     dealerQualifies: done ? table.dealerQualifies : null,
     botChanges: table.botChanges.map((change) => ({ ...change })), // bots replaced this hand
     canSwap:
@@ -404,6 +413,7 @@ function publicState(table, viewer) {
         hand: showCards ? seat.hand.map(strip) : null,
         handRank: showCards ? seat.handRank : null,
         result: done ? seat.result : null,
+        net: done ? (seat.net ?? null) : null,
         message: isYou ? seat.message : null,
       };
     }),

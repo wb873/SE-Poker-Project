@@ -1,5 +1,6 @@
-import React from "react";
+import React, { useState } from "react";
 import PlayingCard from "./playing_card.jsx";
+import { chipEvents } from "../chip_events.mjs";
 import { describeBots } from "../bot_summary.mjs";
 
 // Seats around the stadium-shaped table, as % of the table area.
@@ -14,6 +15,11 @@ const seat_positions = [
   { left: "80%", top: "86%" },
 ];
 const MY_POSITION = 0;
+// Where chips go to and come from at the dealer's spot
+const DEALER_SPOT = { left: "50%", top: "6%" };
+// Chip and card timing in ms (the delays between events come from chip_events.mjs)
+const CHIP_STAGGER = 90;
+const SWAP_RETURN_DELAY = 450; // the new card leaves the dealer after the old one arrives
 // Other players fill the seats nearest the bottom first so a small table looks balanced
 const other_seat_order = [1, 6, 2, 5, 3, 4];
 
@@ -77,6 +83,20 @@ export default function GameTableView({
 }) {
   const hl = (area) => (highlight === area ? " tutorial_highlight" : "");
 
+  // Chip animations: each new table state is compared with the last one. Done during
+  // render (React's "adjust state when a prop changes" pattern) so nothing flickers.
+  const [chips, set_chips] = useState({ prev: table, next_id: 0, flights: [] });
+  if (chips.prev !== table) {
+    const events = chipEvents(chips.prev, table);
+    set_chips({
+      prev: table,
+      next_id: chips.next_id + events.length,
+      flights: [...chips.flights, ...events.map((event, i) => ({ ...event, id: chips.next_id + i }))],
+    });
+  }
+  const end_flight = (id) =>
+    set_chips((current) => ({ ...current, flights: current.flights.filter((flight) => flight.id !== id) }));
+
   const phase = table?.phase ?? "waiting";
   const me = table?.seats.find((seat) => seat.isYou) ?? null;
   const others = (table?.seats ?? []).filter((seat) => !seat.isYou);
@@ -101,6 +121,8 @@ export default function GameTableView({
         ...(me ? [{ seat: me, index: MY_POSITION }] : []),
         ...others.map((seat, i) => ({ seat, index: other_positions[i] })),
       ].filter((entry) => entry.index !== undefined);
+
+  const seat_index = new Map(placed.map(({ seat, index }) => [seat.username, index]));
 
   const player_names = table ? table.seats.map((seat) => seat.username) : (lobby?.players ?? []);
   const antes_in = (table?.seats ?? []).filter((seat) => seat.inHand).length * (table?.ante ?? 0);
@@ -163,7 +185,9 @@ export default function GameTableView({
           {table && phase !== "waiting" && <div className="pot_label">Antes in: ${antes_in.toLocaleString()}</div>}
           <div className="dealer_cards">
             {table?.dealerHand
-              ? table.dealerHand.map((card, index) => <PlayingCard key={index} card={card} />)
+              ? table.dealerHand.map((card, index) => (
+                  <PlayingCard key={index} card={card} highlight={Boolean(table.dealerHighlight?.includes(index))} />
+                ))
               : table?.dealerUpCard
                 ? (
                     <>
@@ -240,6 +264,47 @@ export default function GameTableView({
               {seat.inHand && <span className="ante_chip">${table.ante}</span>}
               {!seat.isYou && seat.handRank && <div className="seat_rank">{seat.handRank}</div>}
             </div>
+          );
+        })}
+
+        {/* Chips sliding between the seats and the dealer, with the amount above the seat */}
+        {chips.flights.map((flight) => {
+          const index = seat_index.get(flight.username);
+          if (index === undefined) return null;
+          const seat_spot = seat_positions[index];
+          const { delay } = flight;
+          const mover = (from, to, wait) => ({
+            "--from-x": from.left, "--from-y": from.top, "--to-x": to.left, "--to-y": to.top,
+            animationDelay: `${wait}ms`,
+          });
+          const [from, to] = flight.toDealer ? [seat_spot, DEALER_SPOT] : [DEALER_SPOT, seat_spot];
+          return (
+            <React.Fragment key={flight.id}>
+              <div className="chip_flight" aria-hidden="true">
+                {flight.kind === "swap" ? (
+                  <>
+                    <span className="flying_card" style={mover(seat_spot, DEALER_SPOT, delay)}>
+                      <PlayingCard face_down small />
+                    </span>
+                    <span className="flying_card" style={mover(DEALER_SPOT, seat_spot, delay + SWAP_RETURN_DELAY)}>
+                      <PlayingCard face_down small />
+                    </span>
+                  </>
+                ) : (
+                  [0, 1, 2].map((i) => (
+                    <span key={i} className="flying_chip" style={mover(from, to, delay + i * CHIP_STAGGER)} />
+                  ))
+                )}
+              </div>
+              <div
+                className={`chip_label ${flight.kind}`}
+                aria-hidden="true"
+                style={{ ...seat_spot, animationDelay: `${delay}ms` }}
+                onAnimationEnd={() => end_flight(flight.id)}
+              >
+                {flight.label}
+              </div>
+            </React.Fragment>
           );
         })}
       </div>

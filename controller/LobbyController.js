@@ -40,13 +40,17 @@ function toPublicLobby(lobby) {
   };
 }
 
+// Names starting with "Bot " belong to table bots, so players can't pass as one
+const isBotName = (name) => /^bot\s/i.test(name.trim());
+
 // Returns an error message, or null when valid
 function validateLobby(body) {
-  const { name, host, visibility, password, maxPlayers, ante, turnTimer, botsEnabled, botAmount, botDifficulty } = body;
+  const { name, host, visibility, password, maxPlayers, ante, turnTimer, botsEnabled, botAmount, botDifficulties } = body;
 
   if (typeof name !== "string" || name.trim().length < 1 || name.trim().length > 30)
     return "Lobby name must be 1-30 characters.";
   if (typeof host !== "string" || !host.trim()) return "A host name is required.";
+  if (isBotName(host)) return 'Names starting with "Bot" are reserved for bots.';
   if (visibility !== "public" && visibility !== "private") return "Visibility must be public or private.";
   if (visibility === "private" && (typeof password !== "string" || password.length < 1))
     return "Private lobbies need a password.";
@@ -56,7 +60,10 @@ function validateLobby(body) {
   if (botsEnabled) {
     if (!Number.isInteger(botAmount) || botAmount < 1 || botAmount > maxPlayers - 1)
       return "Bot amount must leave room for at least one human player.";
-    if (!DIFFICULTIES.includes(botDifficulty)) return "Bot difficulty must be easy, medium or hard.";
+    if (!Array.isArray(botDifficulties) || botDifficulties.length !== botAmount)
+      return "Pick a difficulty for each bot.";
+    if (!botDifficulties.every((level) => DIFFICULTIES.includes(level)))
+      return "Bot difficulty must be easy, medium or hard.";
   }
   return null;
 }
@@ -79,8 +86,8 @@ exports.createLobby = async function (req, res) {
       turnTimer: body.turnTimer,
       sideBets: body.sideBets !== false,
       bots: body.botsEnabled
-        ? { enabled: true, amount: body.botAmount, difficulty: body.botDifficulty }
-        : { enabled: false, amount: 0, difficulty: "medium" },
+        ? { enabled: true, amount: body.botAmount, difficulties: [...body.botDifficulties] }
+        : { enabled: false, amount: 0, difficulties: [] },
       players: [body.host.trim()],
     });
     res.status(201).json({ success: true, lobby: toPublicLobby(lobby) });
@@ -117,6 +124,8 @@ exports.joinLobby = async function (req, res) {
   if (typeof username !== "string" || !username.trim() || username.trim().length > 20)
     return res.status(400).json({ success: false, error: "A username of 1-20 characters is required." });
   const name = username.trim();
+  if (isBotName(name))
+    return res.status(400).json({ success: false, error: 'Names starting with "Bot" are reserved for bots.' });
 
   try {
     const lobby = await LobbyDao.findById(req.params.id);

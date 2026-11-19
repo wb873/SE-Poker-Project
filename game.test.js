@@ -5,6 +5,7 @@ const {
   getPublicState,
   applyAction,
   nextHand,
+  scoringCards,
 } = require("./game");
 
 const STARTING_BALANCE = 1000;
@@ -477,5 +478,24 @@ describe("nextHand", () => {
     expect(next.gameId).toBe(game.gameId);
     expect(next.ante).toBe(25);
     expect(next.raiseAmount).toBe(50);
+  });
+});
+
+describe("scoringCards: which cards make the hand", () => {
+  test.each([
+    ["one pair", hand(card(9, "♠"), card(2, "♥"), card(9, "♦"), card(5, "♣"), card("K", "♠")), [0, 2]],
+    ["two pair", hand(card(4, "♠"), card("J", "♥"), card(4, "♦"), card(7, "♣"), card("J", "♠")), [0, 1, 2, 4]],
+    ["three of a kind", hand(card(8, "♠"), card(8, "♥"), card(2, "♦"), card(8, "♣"), card("A", "♠")), [0, 1, 3]],
+    ["four of a kind", hand(card("Q", "♠"), card("Q", "♥"), card("Q", "♦"), card(3, "♣"), card("Q", "♣")), [0, 1, 2, 4]],
+    ["full house", hand(card(6, "♠"), card(6, "♥"), card(6, "♦"), card("K", "♣"), card("K", "♠")), [0, 1, 2, 3, 4]],
+    ["flush", hand(card(2, "♥"), card(7, "♥"), card(9, "♥"), card("J", "♥"), card("K", "♥")), [0, 1, 2, 3, 4]],
+    ["straight", hand(card(5, "♠"), card(6, "♥"), card(7, "♦"), card(8, "♣"), card(9, "♠")), [0, 1, 2, 3, 4]],
+    ["ace-low straight", hand(card("A", "♠"), card(2, "♥"), card(3, "♦"), card(4, "♣"), card(5, "♠")), [0, 1, 2, 3, 4]],
+    ["straight flush", hand(card(5, "♣"), card(6, "♣"), card(7, "♣"), card(8, "♣"), card(9, "♣")), [0, 1, 2, 3, 4]],
+    ["royal flush", hand(card(10, "♦"), card("J", "♦"), card("Q", "♦"), card("K", "♦"), card("A", "♦")), [0, 1, 2, 3, 4]],
+    ["ace-king high", hand(card(3, "♠"), card("K", "♥"), card(7, "♦"), card("A", "♣"), card(9, "♠")), [1, 3]],
+    ["lower high card", hand(card(3, "♠"), card("Q", "♥"), card(7, "♦"), card("A", "♣"), card(9, "♠")), []],
+  ])("%s", (_label, cards, expected) => {
+    expect(scoringCards(cards)).toEqual(expected);
   });
 });

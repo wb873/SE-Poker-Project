@@ -169,6 +169,22 @@ function compareHands(first, second) {
   return 0;
 }
 
+// Positions (0-4) of the cards that make up the hand, for highlighting:
+// matching cards for pairs, trips and quads; all five for straights, flushes and
+// full houses; the Ace and King for Ace-King high; nothing for a lower high card.
+function scoringCards(hand) {
+  const category = evaluateHand(hand).score[0];
+  const all = hand.map((_, index) => index);
+  if ([4, 5, 6, 8, 9].includes(category)) return all;
+  if (category > 0) {
+    const count = (value) => hand.filter((card) => card.value === value).length;
+    return all.filter((index) => count(hand[index].value) >= 2);
+  }
+  const ace = hand.findIndex((card) => card.value === 14);
+  const king = hand.findIndex((card) => card.value === 13);
+  return ace >= 0 && king >= 0 ? [ace, king].sort((a, b) => a - b) : [];
+}
+
 // Dealer qualifies with a pair or better, or Ace-King high or better.
 function dealerQualifies(hand) {
   const result = evaluateHand(hand);
@@ -396,5 +412,6 @@ module.exports = {
   evaluateHand,
   compareHands,
   dealerQualifies,
+  scoringCards,
   STARTING_BALANCE,
 };

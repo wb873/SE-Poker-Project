@@ -31,7 +31,7 @@ const practice_lobby = {
   ante: ANTE,
   turnTimer: TURN_SECONDS,
   sideBets: false,
-  bots: { enabled: true, amount: 2, difficulty: "easy" },
+  bots: { enabled: true, amount: 2, difficulties: ["easy", "easy"] },
 };
 
 // Steps that wait for a table action instead of a Next click

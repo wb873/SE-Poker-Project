@@ -30,7 +30,7 @@ function validBody(overrides = {}) {
     sideBets: true,
     botsEnabled: false,
     botAmount: 1,
-    botDifficulty: "medium",
+    botDifficulties: ["medium"],
     ...overrides,
   };
 }
@@ -47,6 +47,13 @@ beforeEach(() => {
 });
 
 describe("createLobby", () => {
+  test("a host name starting with Bot is rejected", async () => {
+    const res = mockRes();
+    await LobbyController.createLobby({ body: validBody({ host: "Bot Riley" }) }, res);
+    expect(res.statusCode).toBe(400);
+    expect(LobbyDao.create).not.toHaveBeenCalled();
+  });
+
   test("valid public lobby returns 201 and a public lobby", async () => {
     const res = mockRes();
     await LobbyController.createLobby({ body: validBody() }, res);
@@ -90,15 +97,15 @@ describe("createLobby", () => {
     expect(LobbyDao.create.mock.calls[0][0].passwordHash).toBeNull();
   });
 
-  test("bots enabled are saved with amount and difficulty", async () => {
+  test("bots enabled are saved with amount and a difficulty for each bot", async () => {
     await LobbyController.createLobby(
-      { body: validBody({ botsEnabled: true, botAmount: 2, botDifficulty: "hard" }) },
+      { body: validBody({ botsEnabled: true, botAmount: 3, botDifficulties: ["easy", "medium", "hard"] }) },
       mockRes()
     );
     expect(LobbyDao.create.mock.calls[0][0].bots).toEqual({
       enabled: true,
-      amount: 2,
-      difficulty: "hard",
+      amount: 3,
+      difficulties: ["easy", "medium", "hard"],
     });
   });
 
@@ -107,7 +114,7 @@ describe("createLobby", () => {
     expect(LobbyDao.create.mock.calls[0][0].bots).toEqual({
       enabled: false,
       amount: 0,
-      difficulty: "medium",
+      difficulties: [],
     });
   });
 
@@ -137,9 +144,13 @@ describe("createLobby", () => {
     ["ante negative", { ante: -5 }, /ante/i],
     ["ante not an integer", { ante: 2.5 }, /ante/i],
     ["turn timer not allowed", { turnTimer: 20 }, /turn timer/i],
-    ["bot amount zero", { botsEnabled: true, botAmount: 0 }, /bot amount/i],
+    ["bot amount zero", { botsEnabled: true, botAmount: 0, botDifficulties: [] }, /bot amount/i],
     ["bots fill every seat", { botsEnabled: true, maxPlayers: 4, botAmount: 4 }, /bot amount/i],
-    ["bad bot difficulty", { botsEnabled: true, botAmount: 1, botDifficulty: "insane" }, /difficulty/i],
+    ["bad bot difficulty", { botsEnabled: true, botAmount: 2, botDifficulties: ["easy", "insane"] }, /difficulty/i],
+    ["too few bot difficulties", { botsEnabled: true, botAmount: 2, botDifficulties: ["easy"] }, /each bot/i],
+    ["too many bot difficulties", { botsEnabled: true, botAmount: 1, botDifficulties: ["easy", "hard"] }, /each bot/i],
+    ["bot difficulties missing", { botsEnabled: true, botAmount: 1, botDifficulties: undefined }, /each bot/i],
+    ["bot difficulties not a list", { botsEnabled: true, botAmount: 1, botDifficulties: "hard" }, /each bot/i],
   ])("rejects %s with 400", async (_label, overrides, pattern) => {
     const res = mockRes();
     await LobbyController.createLobby({ body: validBody(overrides) }, res);
@@ -170,7 +181,7 @@ describe("listLobbies", () => {
       {
         _id: "a1", name: "One", host: "h", isPrivate: false, passwordHash: "leak",
         maxPlayers: 4, ante: 5, turnTimer: 30, sideBets: true,
-        bots: { enabled: false, amount: 0, difficulty: "medium" },
+        bots: { enabled: false, amount: 0, difficulties: [] },
         players: ["h", "p2"], status: "waiting",
       },
     ]);
@@ -203,7 +214,7 @@ describe("getLobby", () => {
     LobbyDao.findById.mockImplementation(async (id) => ({
       _id: id, name: "Found", host: "h", isPrivate: true, passwordHash: "leak",
       maxPlayers: 3, ante: 1, turnTimer: 15, sideBets: false,
-      bots: { enabled: true, amount: 1, difficulty: "easy" },
+      bots: { enabled: true, amount: 1, difficulties: ["easy"] },
       players: ["h"], status: "waiting",
     }));
     const res = mockRes();
@@ -227,5 +238,19 @@ describe("getLobby", () => {
     await LobbyController.getLobby({ params: { id: "x" } }, res);
     expect(res.statusCode).toBe(500);
     expect(res.body.error).toBe("Could not load lobby.");
+  });
+});
+describe("joinLobby", () => {
+  test("a name starting with Bot is reserved for bots", async () => {
+    const res = mockRes();
+    await LobbyController.joinLobby({ params: { id: "507f1f77bcf86cd799439011" }, body: { username: "bot sam" } }, res);
+    expect(res.statusCode).toBe(400);
+    expect(LobbyDao.findById).not.toHaveBeenCalled();
+  });
+
+  test("names that only contain bot are fine", async () => {
+    const res = mockRes();
+    await LobbyController.joinLobby({ params: { id: "507f1f77bcf86cd799439011" }, body: { username: "robotfan" } }, res);
+    expect(LobbyDao.findById).toHaveBeenCalled();
   });
 });

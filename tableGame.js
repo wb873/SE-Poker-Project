@@ -44,11 +44,13 @@ function deleteTable(lobbyId) {
   tables.delete(String(lobbyId));
 }
 
-function sitDown(table, username, accountId = null) {
+// accountBalance is the logged-in player's saved balance. Without one (guests)
+// the seat gets STARTING_BALANCE, which is never saved
+function sitDown(table, username, accountId = null, accountBalance = null) {
   if (!table.seats.has(username)) {
     table.seats.set(username, {
       username,
-      balance: STARTING_BALANCE,
+      balance: accountBalance ?? STARTING_BALANCE,
       status: "waiting", // waiting | deciding | raised | folded
       hand: [],
       swapUsed: false,
@@ -61,6 +63,8 @@ function sitDown(table, username, accountId = null) {
   const seat = table.seats.get(username);
   seat.accountId = accountId;
   seat.leaving = false;
+  // Coming back between hands: pick up chips added since (refill, ad, admin)
+  if (accountBalance !== null && table.phase !== "decision") seat.balance = accountBalance;
   return seat;
 }
 

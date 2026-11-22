@@ -6,12 +6,14 @@ jest.mock("../model/LobbyDao", () => ({
 }));
 jest.mock('../util/AuthSession', () => ({ authenticate: jest.fn() }));
 jest.mock('./LeaderboardController', () => ({ recordHand: jest.fn() }));
+jest.mock("../model/UserDao", () => ({ applyHandResult: jest.fn() }));
 
 const LobbyDao = require("../model/LobbyDao");
 const tableGame = require("../tableGame");
 const TableController = require("./TableController");
 const sessions = require('../util/AuthSession');
 const leaderboard = require('./LeaderboardController');
+const UserDao = require("../model/UserDao");
 
 function fakeIo() {
   const emit = jest.fn();
@@ -51,6 +53,7 @@ const lobby = (id, players = ["a"]) => ({ _id: id, ante: 10, turnTimer: 30, play
 beforeEach(() => {
   jest.resetAllMocks();
   leaderboard.recordHand.mockResolvedValue();
+  UserDao.applyHandResult.mockResolvedValue();
 });
 afterEach(() => { for (const id of tableGame.tableIds()) tableGame.deleteTable(id); });
 
@@ -228,5 +231,73 @@ describe("sweeper", () => {
     await jest.advanceTimersByTimeAsync(120 * 1000);
 
     expect(LobbyDao.removePlayer).not.toHaveBeenCalled();
+  });
+});
+
+describe("account balances at the table", () => {
+  const account = { _id: "507f1f77bcf86cd799439022", username: "a", balance: 5000 };
+
+  async function joinWithToken(id, players = ["a"]) {
+    LobbyDao.findById.mockResolvedValue(lobby(id, players));
+    sessions.authenticate.mockResolvedValue(account);
+    const io = fakeIo();
+    const socket = fakeSocket();
+    io.connect(socket);
+    TableController.registerTableHandlers(io, socket);
+    await socket.handlers["table:join"]({ lobbyId: id, username: "a", token: "good" });
+    return socket;
+  }
+
+  test("a logged-in player sits down with their account balance", async () => {
+    await joinWithToken("B1");
+    expect(tableGame.getTable("B1").seats.get("a").balance).toBe(5000);
+  });
+
+  test("a guest without a token gets the starting 1,000", async () => {
+    LobbyDao.findById.mockResolvedValue(lobby("B2"));
+    const socket = fakeSocket();
+    TableController.registerTableHandlers(fakeIo(), socket);
+    await socket.handlers["table:join"]({ lobbyId: "B2", username: "a" });
+    expect(tableGame.getTable("B2").seats.get("a").balance).toBe(1000);
+  });
+
+  test("finishing a hand saves the win or loss to the account", async () => {
+    const socket = await joinWithToken("B3");
+    socket.handlers["table:deal"]();
+    socket.handlers["table:action"]({ action: "fold" });
+    expect(UserDao.applyHandResult).toHaveBeenCalledTimes(1);
+    expect(UserDao.applyHandResult).toHaveBeenCalledWith(account._id, -10);
+    expect(leaderboard.recordHand).toHaveBeenCalledTimes(1); // the leaderboard still gets the hand
+  });
+
+  test("a guest's hand is never saved", async () => {
+    LobbyDao.findById.mockResolvedValue(lobby("B4"));
+    const socket = fakeSocket();
+    TableController.registerTableHandlers(fakeIo(), socket);
+    await socket.handlers["table:join"]({ lobbyId: "B4", username: "a" });
+    socket.handlers["table:deal"]();
+    socket.handlers["table:action"]({ action: "fold" });
+    expect(UserDao.applyHandResult).not.toHaveBeenCalled();
+  });
+
+  test("the last player leaving mid-hand still has the loss saved", async () => {
+    const socket = await joinWithToken("B5");
+    LobbyDao.removePlayer.mockResolvedValue({ players: [] });
+    socket.handlers["table:deal"]();
+    await socket.handlers["table:leave"]();
+    expect(UserDao.applyHandResult).toHaveBeenCalledWith(account._id, -10);
+    expect(tableGame.getTable("B5")).toBeUndefined();
+  });
+
+  test("a failed save is logged and doesn't break the table", async () => {
+    const socket = await joinWithToken("B6");
+    UserDao.applyHandResult.mockRejectedValue(new Error("db down"));
+    const log = jest.spyOn(console, "error").mockImplementation(() => {});
+    socket.handlers["table:deal"]();
+    socket.handlers["table:action"]({ action: "fold" });
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(log).toHaveBeenCalledWith("Could not save hand result:", "db down");
+    expect(tableGame.getTable("B6").phase).toBe("done");
+    log.mockRestore();
   });
 });

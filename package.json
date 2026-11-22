@@ -19,6 +19,6 @@
     "dev": "concurrently -n server,client -c cyan,magenta \"npm run server\" \"npm run client\"",
     "server": "nodemon server.js",
     "client": "npm --prefix client run dev",
-    "test": "jest"
+    "test": "node --experimental-vm-modules ./node_modules/jest/bin/jest.js"
   }
 }

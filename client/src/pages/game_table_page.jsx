@@ -111,11 +111,15 @@ export default function GameTablePage() {
 
   const phase = table?.phase ?? "waiting";
   const me = table?.seats.find((seat) => seat.isYou) ?? null;
+  const turn_seat = phase === "decision" ? table?.seats.find((seat) => seat.isTurn) : null;
+  const waiting_on = turn_seat && !turn_seat.isYou ? `${turn_seat.username}'s turn...` : null;
   const status_text = !table
     ? "Connecting to the table..."
     : is_spectator
-      ? "You are spectating."
-      : me?.message || (phase === "decision" ? "Waiting for the next hand." : "Press Deal to start a hand.");
+      ? waiting_on || "You are spectating."
+      : (me?.status === "deciding" && waiting_on) ||
+        me?.message ||
+        (phase === "decision" ? waiting_on || "Waiting for the next hand." : "Press Deal to start a hand.");
 
   return (
     <GameTableView

@@ -34,12 +34,30 @@ function broadcast(io, table) {
   }
 }
 
-function armTimer(io, table) {
+// Sets the timer for whoever's turn it is. A bot moves after a short pause; a
+// player folds if their turn timer runs out. Call this after anything that can
+// change the turn (deal, action, someone leaving).
+function armTurn(io, table) {
   clearTimeout(table.timer);
-  table.timer = setTimeout(() => {
-    tableGame.foldIdle(table);
+  table.timer = null;
+  if (table.phase !== "decision" || !table.currentTurn) return;
+
+  const key = table.currentTurn;
+  const moveOn = (move) => () => {
+    try {
+      move();
+    } catch (err) {
+      console.error("Turn failed:", err.message);
+    }
+    armTurn(io, table);
     broadcast(io, table);
-  }, table.turnSeconds * 1000);
+  };
+
+  if (tableGame.isBotTurn(table)) {
+    table.timer = setTimeout(moveOn(() => tableGame.playBot(table, key)), tableGame.botDelay(table));
+  } else {
+    table.timer = setTimeout(moveOn(() => tableGame.foldIdle(table)), Math.max(0, table.deadline - Date.now()));
+  }
 }
 
 async function closeLobby(io, lobbyId) {
@@ -51,7 +69,10 @@ async function closeLobby(io, lobbyId) {
 // Takes a player out of the lobby and the table. Deletes the lobby if nobody is left.
 async function removeFromLobby(io, lobbyId, username) {
   const table = tableGame.getTable(lobbyId);
-  if (table) tableGame.leave(table, username);
+  if (table) {
+    tableGame.leave(table, username);
+    armTurn(io, table); // if it was their turn, the next seat is up
+  }
 
   const updated = await LobbyDao.removePlayer(lobbyId, username);
   if (updated && updated.players.length === 0) return closeLobby(io, lobbyId);
@@ -107,12 +128,13 @@ exports.registerTableHandlers = function (io, socket) {
 
   socket.on("table:deal", seated((table) => {
     tableGame.startHand(table);
-    armTimer(io, table);
+    armTurn(io, table);
     broadcast(io, table);
   }));
 
   socket.on("table:action", seated((table, { action, cardIndex }) => {
     tableGame.act(table, socket.data.tableUser, action, cardIndex);
+    armTurn(io, table);
     broadcast(io, table);
   }));
 

@@ -14,6 +14,55 @@ test("test database configuration", () => {
   expect(true).toBe(true);
 });
 
+// These don't need a database
+describe("lobby codes", () => {
+  test("a new code is 5 capital letters", () => {
+    for (let i = 0; i < 200; i++) expect(LobbyDao.newLobbyCode()).toMatch(/^[A-Z]{5}$/);
+  });
+
+  test("codes cover the whole alphabet", () => {
+    expect(LobbyDao.newLobbyCode(() => 0)).toBe("AAAAA");
+    expect(LobbyDao.newLobbyCode(() => 0.9999)).toBe("ZZZZZ");
+  });
+
+  test.each([
+    ["QXMRT", "QXMRT"],
+    ["qxmrt", "QXMRT"],
+    ["  QxMrT ", "QXMRT"],
+    ["QXMR", null],
+    ["QXMRTS", null],
+    ["QX1RT", null],
+    ["6643a1f9c2b1e8d7a5f3c901", null],
+    ["", null],
+    [undefined, null],
+  ])("toLobbyCode(%p) is %p", (input, expected) => {
+    expect(LobbyDao.toLobbyCode(input)).toBe(expected);
+  });
+
+  test("a code that's already taken is swapped for another", async () => {
+    const taken = new Set(["AAAAA"]);
+    const codes = ["AAAAA", "BBBBB"];
+    const insert = jest.fn(async (code) => {
+      if (taken.has(code)) throw Object.assign(new Error("duplicate"), { code: 11000 });
+      return { _id: code };
+    });
+    expect(await LobbyDao.createWithUniqueCode(insert, () => codes.shift())).toEqual({ _id: "BBBBB" });
+    expect(insert).toHaveBeenCalledTimes(2);
+  });
+
+  test("other errors are not retried", async () => {
+    const insert = jest.fn(async () => { throw new Error("validation failed"); });
+    await expect(LobbyDao.createWithUniqueCode(insert)).rejects.toThrow("validation failed");
+    expect(insert).toHaveBeenCalledTimes(1);
+  });
+
+  test("it gives up after too many taken codes", async () => {
+    const insert = jest.fn(async () => { throw Object.assign(new Error("duplicate"), { code: 11000 }); });
+    await expect(LobbyDao.createWithUniqueCode(insert, () => "AAAAA", 3)).rejects.toThrow("duplicate");
+    expect(insert).toHaveBeenCalledTimes(3);
+  });
+});
+
 function lobbyData(overrides = {}) {
   return {
     name: "Test Lobby",
@@ -24,7 +73,7 @@ function lobbyData(overrides = {}) {
     ante: 10,
     turnTimer: 30,
     sideBets: true,
-    bots: { enabled: false, amount: 0, difficulty: "medium" },
+    bots: { enabled: false, amount: 0, difficulties: [] },
     players: ["host1"],
     ...overrides,
   };
@@ -70,11 +119,11 @@ describe("create", () => {
 
   dbTest("stores bot settings", async () => {
     const lobby = await LobbyDao.create(
-      lobbyData({ bots: { enabled: true, amount: 2, difficulty: "hard" } })
+      lobbyData({ bots: { enabled: true, amount: 2, difficulties: ["easy", "hard"] } })
     );
     expect(lobby.bots.enabled).toBe(true);
     expect(lobby.bots.amount).toBe(2);
-    expect(lobby.bots.difficulty).toBe("hard");
+    expect([...lobby.bots.difficulties]).toEqual(["easy", "hard"]);
   });
 
   dbTest("rejects a missing name", async () => {
@@ -100,7 +149,7 @@ describe("create", () => {
 
   dbTest("rejects an invalid bot difficulty", async () => {
     await expect(
-      LobbyDao.create(lobbyData({ bots: { enabled: true, amount: 1, difficulty: "insane" } }))
+      LobbyDao.create(lobbyData({ bots: { enabled: true, amount: 1, difficulties: ["insane"] } }))
     ).rejects.toThrow();
   });
 
@@ -141,9 +190,14 @@ describe("findById", () => {
     expect(found.name).toBe("Find me");
   });
 
-  dbTest("unknown but valid id returns null", async () => {
-    const missing = new mongoose.Types.ObjectId();
-    expect(await LobbyDao.findById(String(missing))).toBeNull();
+  dbTest("unknown but valid code returns null", async () => {
+    await LobbyDao.deleteAll();
+    expect(await LobbyDao.findById("ZZZZZ")).toBeNull();
+  });
+
+  dbTest("a lowercase code still finds the lobby", async () => {
+    const created = await LobbyDao.create(lobbyData());
+    expect(String((await LobbyDao.findById(created._id.toLowerCase()))._id)).toBe(created._id);
   });
 
   dbTest("malformed id returns null instead of throwing", async () => {
@@ -178,7 +232,7 @@ describe("addPlayer", () => {
 
   dbTest("counts bots as taken seats", async () => {
     const lobby = await LobbyDao.create(
-      lobbyData({ maxPlayers: 3, bots: { enabled: true, amount: 1, difficulty: "easy" } })
+      lobbyData({ maxPlayers: 3, bots: { enabled: true, amount: 1, difficulties: ["easy"] } })
     );
     expect((await LobbyDao.addPlayer(String(lobby._id), "bob")).players).toHaveLength(2);
     expect(await LobbyDao.addPlayer(String(lobby._id), "carol")).toBeNull();

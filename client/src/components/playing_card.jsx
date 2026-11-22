@@ -7,7 +7,7 @@ export default function PlayingCard({ card, face_down = false, big = false, smal
 
   const is_red = card.suit === "♥" || card.suit === "♦";
   return (
-    <div className={"card" + (is_red ? " red" : "") + size_class}>
+    <div className={"card" + (is_red ? " red" : "") + size_class + (highlight ? " highlight" : "")}>
       <span>{card.rank}</span>
       <span>{card.suit}</span>
     </div>

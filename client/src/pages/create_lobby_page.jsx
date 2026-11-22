@@ -21,7 +21,7 @@ export default function CreateLobbyPage() {
     ante: 10,
     bots_enabled: false,
     bot_amount: 1,
-    bot_difficulty: "medium",
+    bot_difficulties: ["medium"], // one per bot
     turn_timer: 30,
     side_bets: true,
   });
@@ -29,6 +29,22 @@ export default function CreateLobbyPage() {
   // Update a single form field
   function update_field(field_name, value) {
     set_form((previous) => ({ ...previous, [field_name]: value }));
+  }
+
+  // Changing the bot count keeps the picks already made; new bots start at medium
+  function update_bot_amount(amount) {
+    set_form((previous) => ({
+      ...previous,
+      bot_amount: amount,
+      bot_difficulties: Array.from({ length: amount }, (_, i) => previous.bot_difficulties[i] ?? "medium"),
+    }));
+  }
+
+  function update_bot_difficulty(index, level) {
+    set_form((previous) => ({
+      ...previous,
+      bot_difficulties: previous.bot_difficulties.map((old, i) => (i === index ? level : old)),
+    }));
   }
 
   async function handle_create(event) {
@@ -50,7 +66,7 @@ export default function CreateLobbyPage() {
         sideBets: form.side_bets,
         botsEnabled: form.bots_enabled,
         botAmount: form.bot_amount,
-        botDifficulty: form.bot_difficulty,
+        botDifficulties: form.bot_difficulties,
       }),
     });
     const data = await response.json();
@@ -100,16 +116,23 @@ export default function CreateLobbyPage() {
             <input type="checkbox" checked={form.bots_enabled} onChange={(e) => update_field("bots_enabled", e.target.checked)} /> Bots
           </label>
           {form.bots_enabled && (
-            <div className="row" style={{ marginTop: 10 }}>
-              <select className="input" value={form.bot_amount} onChange={(e) => update_field("bot_amount", Number(e.target.value))}>
-                {[1, 2, 3, 4, 5, 6].map((n) => <option key={n} value={n}>{n} bot{n > 1 ? "s" : ""}</option>)}
-              </select>
-              <select className="input" value={form.bot_difficulty} onChange={(e) => update_field("bot_difficulty", e.target.value)}>
-                <option value="easy">Easy</option>
-                <option value="medium">Medium</option>
-                <option value="hard">Hard</option>
-              </select>
-            </div>
+            <>
+              <div className="row" style={{ marginTop: 10 }}>
+                <select className="input" value={form.bot_amount} onChange={(e) => update_bot_amount(Number(e.target.value))}>
+                  {[1, 2, 3, 4, 5, 6].map((n) => <option key={n} value={n}>{n} bot{n > 1 ? "s" : ""}</option>)}
+                </select>
+              </div>
+              {form.bot_difficulties.map((level, i) => (
+                <label key={i} className="row bot_difficulty_row">
+                  <span>Bot {i + 1}</span>
+                  <select className="input" value={level} onChange={(e) => update_bot_difficulty(i, e.target.value)}>
+                    <option value="easy">Easy</option>
+                    <option value="medium">Medium</option>
+                    <option value="hard">Hard</option>
+                  </select>
+                </label>
+              ))}
+            </>
           )}
         </div>
 

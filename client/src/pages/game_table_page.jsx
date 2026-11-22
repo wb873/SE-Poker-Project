@@ -41,6 +41,7 @@ export default function GameTablePage() {
     return () => { active = false; };
   }, [lobby_id]);
 
+  
   // One socket for chat and the live table
   useEffect(() => {
     const socket = io(API_URL);
@@ -69,7 +70,11 @@ export default function GameTablePage() {
       set_chat_log((previous) => [...previous, { user: "System", text: message }]);
     });
 
-    return () => socket.disconnect();
+    return () => {
+  console.log("[SOCKET CLEANUP] Disconnecting socket", socket.id);
+  console.trace("[SOCKET CLEANUP] Triggered by component cleanup");
+  socket.disconnect();
+};
   }, [lobby_id, player.username, player.is_guest, is_spectator, token, navigate]);
 
   // Countdown to the server's deadline

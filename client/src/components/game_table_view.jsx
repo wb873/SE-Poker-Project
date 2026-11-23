@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import PlayingCard from "./playing_card.jsx";
 import { chipEvents } from "../chip_events.mjs";
 import { describeBots } from "../bot_summary.mjs";
+import HandOdds from "./hand_odds.jsx";
 
 // Seats around the stadium-shaped table, as % of the table area.
 // Index 0 is the bottom centre, where you always sit; the rest go clockwise.
@@ -369,7 +370,10 @@ export default function GameTableView({
             <span className="muted">Hand rank </span>
             <b>{me?.handRank || "Not revealed"}</b>
           </div>
-          {me && (me.handRank || table.dealerHandRank) && (
+          {!is_spectator && phase === "decision" && me?.inHand && me.status !== "folded" && me.hand?.length === 5 && table?.dealerUpCard && (
+            <HandOdds hand={me.hand} dealer_up_card={table.dealerUpCard} />
+          )}
+          {phase === "done" && me && (me.handRank || table.dealerHandRank) && (
             <div className={"info_box" + hl("result")}>
               {me.handRank && <div>Your hand: {me.handRank}</div>}
               {table.dealerHandRank && <div>Dealer hand: {table.dealerHandRank}</div>}

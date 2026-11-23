@@ -5,6 +5,7 @@ import { use_session } from "../session.jsx";
 import { API_URL } from "../api_config.js";
 import { join_lobby } from "../lobby_api.js";
 import { describeBots } from "../bot_summary.mjs";
+import AdBanner from "../components/ad_banner.jsx";
 
 // Lobby browser with filters and join (stories L3, L2)
 export default function LobbyBrowserPage() {
@@ -69,7 +70,7 @@ export default function LobbyBrowserPage() {
   return (
     <div className="page">
       <PageHeader title="Lobby Browser" />
-
+      <AdBanner />
       <div className="filters">
         <select className="input" value={max_ante} onChange={(e) => set_max_ante(e.target.value)}>
           <option value="any">Ante: Any</option>

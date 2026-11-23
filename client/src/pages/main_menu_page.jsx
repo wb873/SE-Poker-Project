@@ -6,6 +6,7 @@ import OutOfChips from "../components/out_of_chips.jsx";
 import { mock_friends } from "../mock_data.js";
 import { API_URL } from "../api_config.js";
 import { join_lobby } from "../lobby_api.js";
+import AdBanner from "../components/ad_banner.jsx";
 
 // Main menu: navigation, welcome/balance, quick-join lobbies, friends online
 export default function MainMenuPage() {
@@ -104,6 +105,7 @@ export default function MainMenuPage() {
           {player.is_admin && <p className="tag cyan" style={{ marginTop: 20 }}>Admin controls coming soon</p>}
           </div>
           <MonthlyLeaderboard key={player.id || 'guest'} />
+          <AdBanner />
         </aside>
       </div>
     </div>

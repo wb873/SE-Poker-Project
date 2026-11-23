@@ -370,3 +370,16 @@ a { color: var(--primary); }
   .filters { grid-template-columns: 1fr 1fr; }
   .stat_grid { grid-template-columns: 1fr 1fr; }
 }
+
+.ad_banner {
+  text-align: center;
+  border-style: dashed;
+  margin-top: 14px;
+}
+.ad_banner .ad_label {
+  display: block;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  opacity: 0.7;
+}

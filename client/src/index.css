@@ -136,6 +136,18 @@ a { color: var(--primary); }
 /* ---------- Forms ---------- */
 .form_grid { display: grid; gap: 14px; max-width: 520px; }
 .form_grid label { display: flex; flex-direction: column; gap: 6px; font-size: 14px; color: var(--text_muted); }
+.contact_form {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  max-width: none;
+}
+.contact_form label { width: 100%; max-width: 720px; text-align: center; }
+.contact_form label > .input { width: 100%; max-width: 100%; min-width: 0; }
+.contact_form textarea { resize: vertical; }
+.contact_form .btn { align-self: center; }
+.contact_intro { text-align: center; }
 .toggle_row { display: flex; align-items: center; gap: 10px; }
 
 /* ---------- Profile ---------- */

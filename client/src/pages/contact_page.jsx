@@ -47,10 +47,10 @@ export default function ContactPage() {
   }
   return <div className="page">
     <PageHeader title="Contact Admin" />
-    <p className="muted">Send a message about your account or the game. Check this page for the administrator’s response.</p>
+    <p className="muted contact_intro">Send a message about your account or the game. Check this page for the administrator’s response.</p>
     {error && <p role="alert" className="error_text">{error}</p>}
     {notice && <p role="status">{notice}</p>}
-    <form className="form_grid panel" onSubmit={send}>
+    <form className="form_grid contact_form panel" onSubmit={send}>
       <label>Subject<input className="input" maxLength={150} value={subject} onChange={(event) => set_subject(event.target.value)} /></label>
       <label>Message<textarea className="input" rows={6} required maxLength={5000} value={message} onChange={(event) => set_message(event.target.value)} /></label>
       <button className="btn primary" disabled={busy || !message.trim()}>{busy ? 'Sending...' : 'Send Message'}</button>

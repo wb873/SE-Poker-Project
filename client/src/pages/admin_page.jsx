@@ -139,6 +139,7 @@ export default function AdminPage() {
 
   return <div className="page">
     <div className="page_header">
+      <button className="btn" onClick={() => navigate('/menu')}>← Back</button>
       <h1>Admin Dashboard</h1><span className="tag cyan">{player.username}</span>
       <button className="btn" disabled={loading || busy} onClick={() => { set_loading(true); set_error(''); set_refresh((value) => value + 1); }}>Refresh</button>
       <button className="btn" onClick={() => { logout(); navigate('/'); }}>Log Out</button>

@@ -14,6 +14,8 @@ export default function ProfilePage() {
   const [loading, set_loading] = useState(true);
   const [error, set_error] = useState('');
   const [refresh, set_refresh] = useState(0);
+  const [avatar_error, set_avatar_error] = useState('');
+  const [saving_avatar, set_saving_avatar] = useState(false);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -61,6 +63,35 @@ export default function ProfilePage() {
     { label: "Side Bet Winnings", value: 'Not available' },
   ] : [];
 
+  // Load the saved avatar
+useEffect(() => {
+  let active = true;
+  fetch(`${API_URL}/api/auth/me`, { headers: { Authorization: `Bearer ${token}` } })
+    .then((response) => response.json())
+    .then((data) => { if (active && avatar_options.includes(data.user?.avatar)) set_avatar(data.user.avatar); })
+    .catch(() => {});
+  return () => { active = false; };
+}, [token]);
+
+// Show the choice right away, save it, and go back to the old one if saving fails
+async function choose_avatar(option) {
+  if (option === avatar || saving_avatar) return;
+  const previous = avatar;
+  set_avatar(option); set_avatar_error(''); set_saving_avatar(true);
+  try {
+    const response = await fetch(`${API_URL}/api/auth/avatar`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ avatar: option }),
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Could not save your avatar.');
+  } catch (err) {
+    set_avatar(previous); set_avatar_error(err.message);
+  } finally {
+    set_saving_avatar(false);
+  }
+}
   return (
     <div className="page">
       <PageHeader title={`${player.username}'s Stats`} />
@@ -72,12 +103,13 @@ export default function ProfilePage() {
       </div>
 
       {editing && (
-        <div className="avatar_picker">
-          {avatar_options.map((option) => (
-            <button key={option} className={option === avatar ? "selected" : ""} onClick={() => set_avatar(option)}>{option}</button>
-          ))}
-        </div>
-      )}
+      <div className="avatar_picker">
+        {avatar_options.map((option) => (
+          <button key={option} disabled={saving_avatar} className={option === avatar ? "selected" : ""} onClick={() => choose_avatar(option)}>{option}</button>
+        ))}
+      </div>
+    )}
+    {avatar_error && <p role="alert" className="error_text">{avatar_error}</p>}
 
       <div className="row wrap" style={{ marginTop: 20 }}>
         <h2>Lifetime Statistics</h2>

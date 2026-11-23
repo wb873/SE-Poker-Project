@@ -383,3 +383,9 @@ a { color: var(--primary); }
   letter-spacing: 0.08em;
   opacity: 0.7;
 }
+
+.seat_avatar_emoji {
+  font-size: 26px;
+  line-height: 2
+  ;
+}

@@ -389,3 +389,10 @@ describe("bots", () => {
     await jest.advanceTimersByTimeAsync(5000); // pending bot moves were cancelled
   });
 });
+
+test("a seat's avatar is sent to every viewer", () => {
+  const table = tableGame.getOrCreateTable({ _id: "AVTST", ante: 10, turnTimer: 30, bots: { enabled: false } });
+  tableGame.sitDown(table, "Will", "acct1", 500, "😎");
+  const state = tableGame.publicState(table, "Someone");
+  expect(state.seats.find((s) => s.username === "Will").avatar).toBe("😎");
+});

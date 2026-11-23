@@ -33,7 +33,11 @@ const result_labels = {
 };
 const HAND_SIZE = 5;
 
-function Avatar({ bot = false }) {
+// A player's chosen emoji, or the default person icon (bots keep the robot icon)
+const emoji_of = (avatar) => (avatar && avatar !== "default" ? avatar : null);
+
+function Avatar({ bot = false, emoji = null }) {
+  if (emoji) return <span className="seat_avatar_emoji" aria-hidden="true">{emoji}</span>;
   if (bot) {
     return (
       <svg className="seat_avatar_icon bot" viewBox="0 0 24 24" aria-hidden="true">
@@ -247,7 +251,7 @@ export default function GameTableView({
                     : Array.from({ length: HAND_SIZE }, (_, i) => <PlayingCard key={i} face_down small />)}
                 </div>
               )}
-              <div className={"seat_avatar" + (seat.isBot ? " bot" : "")}><Avatar bot={seat.isBot} /></div>
+              <div className={"seat_avatar" + (seat.isBot ? " bot" : "")}><Avatar bot={seat.isBot} emoji={seat.isBot ? null : emoji_of(seat.avatar)}/></div>
               <div className="nameplate">
                 <b>
                   {seat.isYou ? `${seat.username} (You)` : seat.username}

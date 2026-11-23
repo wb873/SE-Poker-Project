@@ -210,3 +210,26 @@ exports.changePassword = async function (req, res) {
     res.status(500).json({ success: false, error: "Could not change the password." });
   }
 };
+
+// Emoji only (with optional skin tone, variation selector or joined emoji), so nothing else can be stored
+const AVATAR_PATTERN = /^\p{Extended_Pictographic}(?:\uFE0F|\u200D\p{Extended_Pictographic}|[\u{1F3FB}-\u{1F3FF}])*$/u;
+
+// GET /api/auth/me, behind AuthSession.requireUser
+exports.getMe = function (req, res) {
+  res.json({ success: true, user: toPublicUser(req.user) });
+};
+
+// PUT /api/auth/avatar  (P10), behind AuthSession.requireUser
+exports.updateAvatar = async function (req, res) {
+  const { avatar } = req.body ?? {};
+  if (typeof avatar !== "string" || avatar.length > 16 || !AVATAR_PATTERN.test(avatar))
+    return res.status(400).json({ success: false, error: "Choose a valid avatar." });
+
+  try {
+    const updated = await UserDao.setAvatar(req.user._id, avatar);
+    if (!updated) return res.status(404).json({ success: false, error: "Account not found." });
+    res.json({ success: true, user: toPublicUser(updated) });
+  } catch (err) {
+    res.status(500).json({ success: false, error: "Could not save your avatar." });
+  }
+};

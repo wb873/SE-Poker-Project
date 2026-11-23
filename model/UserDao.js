@@ -139,3 +139,9 @@ exports.applyHandResult = async (id, net) => {
     { returnDocument: 'after' }
   ).select('balance');
 };
+
+// Saves the player's chosen avatar (P10)
+exports.setAvatar = (id, avatar) => {
+  if (!mongoose.isValidObjectId(id)) return Promise.resolve(null);
+  return User.findByIdAndUpdate(id, { avatar }, { returnDocument: "after" });
+};

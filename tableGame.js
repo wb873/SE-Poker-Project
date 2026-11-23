@@ -79,6 +79,10 @@ function newSeat(username, seatNumber, balance) {
     leaving: false,
     accountId: null,
     isBot: false,
+    leaving: false,
+    accountId: null,
+    avatar: null, // emoji from the player's profile; bots and guests have none
+    isBot: false,
   };
 }
 
@@ -117,12 +121,13 @@ function deleteTable(lobbyId) {
 
 // accountBalance is the logged-in player's saved balance. Without one (guests)
 // the seat gets STARTING_BALANCE, which is never saved
-function sitDown(table, username, accountId = null, accountBalance = null) {
+function sitDown(table, username, accountId = null, accountBalance = null, avatar = null) {
   if (!table.seats.has(username)) {
     table.seats.set(username, newSeat(username, freeSeatNumber(table), accountBalance ?? STARTING_BALANCE));
   }
   const seat = table.seats.get(username);
   seat.accountId = accountId;
+  seat.avatar = avatar;
   seat.leaving = false;
   // Coming back between hands: pick up chips added since (refill, ad, admin)
   if (accountBalance !== null && table.phase !== "decision") seat.balance = accountBalance;
@@ -403,6 +408,7 @@ function publicState(table, viewer) {
         username: seat.username,
         seatNumber: seat.seatNumber,
         isBot: seat.isBot,
+        avatar: seat.avatar,
         difficulty: seat.isBot ? seat.difficulty : null,
         isTurn: key === table.currentTurn,
         isYou,

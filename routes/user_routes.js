@@ -13,5 +13,8 @@ router.post("/logout", UserController.logout);               // P3
 router.post("/reset-password", UserController.resetPassword); // P4
 router.post("/forgot-password", UserController.forgotPassword); // P4
 router.post("/change-password", AuthSession.requireUser, UserController.changePassword); // P4
+router.get("/me", AuthSession.requireUser, UserController.getMe);
+router.put("/avatar", AuthSession.requireUser, UserController.updateAvatar); // P10
+
 
 module.exports = router;

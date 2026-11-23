@@ -119,8 +119,7 @@ exports.registerTableHandlers = function (io, socket) {
       const table = tableGame.getOrCreateTable(lobby);
       table.onHandSettled = handSettled;
       // Logged-in seats play with the account balance; guests get the starting 1,000
-      if (!spectate) tableGame.sitDown(table, name, user ? String(user._id) : null, user ? user.balance : null);
-      broadcast(io, table);
+    if (!spectate) tableGame.sitDown(table, name, user ? String(user._id) : null, user ? user.balance : null, user ? user.avatar : null);      broadcast(io, table);
     } catch (err) {
       fail(err.status ? err.message : "Could not join the table.");
     }

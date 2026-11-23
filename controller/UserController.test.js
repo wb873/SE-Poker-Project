@@ -377,3 +377,32 @@ describe("forgotPassword (P4)", () => {
     expect(UserDao.findByUsernameAndEmail).not.toHaveBeenCalled();
   });
 });
+
+const res_mock = () => { const r = {}; r.status = jest.fn(() => r); r.json = jest.fn(() => r); return r; };
+
+test("updateAvatar saves a valid emoji", async () => {
+  UserDao.setAvatar = jest.fn().mockResolvedValue({ _id: "1", username: "a", avatar: "😎" });
+  const res = res_mock();
+  await UserController.updateAvatar({ user: { _id: "1" }, body: { avatar: "😎" } }, res);
+  expect(UserDao.setAvatar).toHaveBeenCalledWith("1", "😎");
+  expect(res.json.mock.calls[0][0].success).toBe(true);
+});
+
+test.each([["abc"], [""], [5], ["<script>"], ["😎😎😎😎😎😎😎😎😎"]])("updateAvatar rejects %p", async (avatar) => {
+  const res = res_mock();
+  await UserController.updateAvatar({ user: { _id: "1" }, body: { avatar } }, res);
+  expect(res.status).toHaveBeenCalledWith(400);
+});
+
+test("updateAvatar returns 404 when the account is gone", async () => {
+  UserDao.setAvatar = jest.fn().mockResolvedValue(null);
+  const res = res_mock();
+  await UserController.updateAvatar({ user: { _id: "1" }, body: { avatar: "😎" } }, res);
+  expect(res.status).toHaveBeenCalledWith(404);
+});
+
+test("getMe returns the public user", () => {
+  const res = res_mock();
+  UserController.getMe({ user: { _id: "1", username: "a", email: "a@b.c", avatar: "😎", balance: 5 } }, res);
+  expect(res.json.mock.calls[0][0].user.avatar).toBe("😎");
+});

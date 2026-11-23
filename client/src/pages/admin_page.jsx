@@ -160,10 +160,6 @@ export default function AdminPage() {
         </div>
         {selected && <div>
           <h3>{selected.subject || 'No subject'}</h3><p className="muted">From {selected.name} ({selected.email})</p>
-          {selected.subject === 'Password reset request' && <button className="btn" onClick={() => {
-            set_search(selected.name);
-            document.getElementById('users_title')?.scrollIntoView({ behavior: 'smooth' });
-          }}>Find {selected.name} in User Management</button>}
           <p className="admin_text">{selected.message}</p>
           {selected.reply && <div className="panel"><b>Saved response</b><p className="admin_text">{selected.reply}</p></div>}
           <form className="form_grid" onSubmit={respond}>

@@ -7,11 +7,19 @@ jest.mock("../model/UserDao", () => ({
   findByUsername: jest.fn(),
   findByUsernameAndEmail: jest.fn(),
   updatePassword: jest.fn(),
+  setResetToken: jest.fn(),
+  resetPasswordWithToken: jest.fn(),
 }));
-jest.mock("../model/ContactDao", () => ({ create: jest.fn() }));
+jest.mock("../util/Mailer", () => ({
+  appUrl: () => "http://localhost:5173",
+  sendPasswordReset: jest.fn(),
+}));
+jest.mock("../util/AuthSession", () => ({ ...jest.requireActual("../util/AuthSession"), revokeUser: jest.fn() }));
 
+const crypto = require("crypto");
 const UserDao = require("../model/UserDao");
-const ContactDao = require("../model/ContactDao");
+const Mailer = require("../util/Mailer");
+const AuthSession = require("../util/AuthSession");
 const UserController = require("./UserController");
 const PasswordUtil = require("../util/PasswordUtil");
 
@@ -45,7 +53,9 @@ beforeEach(() => {
   UserDao.findByEmail.mockResolvedValue(null);
   UserDao.findByUsername.mockResolvedValue(null);
   UserDao.findByUsernameAndEmail.mockResolvedValue(null);
-  ContactDao.create.mockImplementation(async (data) => ({ _id: "c1", ...data }));
+  UserDao.setResetToken.mockResolvedValue(storedUser());
+  UserDao.resetPasswordWithToken.mockResolvedValue(null);
+  Mailer.sendPasswordReset.mockResolvedValue();
   UserDao.updatePassword.mockImplementation(async (id, passwordHash) => storedUser({ passwordHash }));
 });
 
@@ -341,40 +351,115 @@ describe("checkAvailability (P1)", () => {
 });
 
 describe("forgotPassword (P4)", () => {
-  const validBody = { username: "willb", email: "will@example.com" };
+  const sha256 = (value) => crypto.createHash("sha256").update(value).digest("hex");
 
-  test("a matching account sends a reset request to the admin inbox", async () => {
-    UserDao.findByUsernameAndEmail.mockResolvedValue(storedUser());
+  test("emails a reset link and stores only a hash of its token", async () => {
+    UserDao.findByEmail.mockResolvedValue(storedUser());
     const res = mockRes();
 
-    await UserController.forgotPassword({ body: validBody }, res);
+    await UserController.forgotPassword({ body: { email: "Will@Example.com " } }, res);
 
     expect(res.statusCode).toBe(200);
     expect(res.body.success).toBe(true);
-    expect(ContactDao.create).toHaveBeenCalledWith(expect.objectContaining({
-      name: "willb",
-      email: "will@example.com",
-      subject: "Password reset request",
-    }));
+    expect(Mailer.sendPasswordReset).toHaveBeenCalledTimes(1);
+    const [user, link, minutes] = Mailer.sendPasswordReset.mock.calls[0];
+    expect(user.email).toBe("will@example.com");
+    expect(minutes).toBe(30);
+    const token = link.match(/^http:\/\/localhost:5173\/#\/reset-password\?token=([0-9a-f]{64})$/)[1];
+
+    const [id, storedHash, expires] = UserDao.setResetToken.mock.calls[0];
+    expect(id).toBe(storedUser()._id);
+    expect(storedHash).toBe(sha256(token));
+    expect(storedHash).not.toBe(token);
+    expect(expires.getTime() - Date.now()).toBeGreaterThan(29 * 60 * 1000);
+    expect(expires.getTime() - Date.now()).toBeLessThanOrEqual(30 * 60 * 1000);
   });
 
-  test("no matching account returns 404 and sends nothing", async () => {
-    const res = mockRes();
-    await UserController.forgotPassword({ body: validBody }, res);
+  test("an unknown email gets the same reply and no email is sent", async () => {
+    UserDao.findByEmail.mockResolvedValue(storedUser());
+    const known = mockRes();
+    await UserController.forgotPassword({ body: { email: "will@example.com" } }, known);
 
-    expect(res.statusCode).toBe(404);
-    expect(ContactDao.create).not.toHaveBeenCalled();
+    UserDao.findByEmail.mockResolvedValue(null);
+    Mailer.sendPasswordReset.mockClear();
+    const unknown = mockRes();
+    await UserController.forgotPassword({ body: { email: "nobody@example.com" } }, unknown);
+
+    expect(unknown.statusCode).toBe(200);
+    expect(unknown.body).toEqual(known.body);
+    expect(Mailer.sendPasswordReset).not.toHaveBeenCalled();
+  });
+
+  test("a banned account is not sent a link", async () => {
+    UserDao.findByEmail.mockResolvedValue(storedUser({ isBanned: true }));
+    const res = mockRes();
+    await UserController.forgotPassword({ body: { email: "will@example.com" } }, res);
+
+    expect(res.statusCode).toBe(200);
+    expect(UserDao.setResetToken).not.toHaveBeenCalled();
+    expect(Mailer.sendPasswordReset).not.toHaveBeenCalled();
+  });
+
+  test("a failed send still gets the usual reply", async () => {
+    UserDao.findByEmail.mockResolvedValue(storedUser());
+    Mailer.sendPasswordReset.mockRejectedValue(new Error("SMTP down"));
+    const spy = jest.spyOn(console, "error").mockImplementation(() => {});
+    const res = mockRes();
+
+    await UserController.forgotPassword({ body: { email: "will@example.com" } }, res);
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(spy).toHaveBeenCalled();
+    spy.mockRestore();
+  });
+
+  test.each([["a missing email", {}], ["an invalid email", { email: "nope" }]])("rejects %s with 400", async (_label, body) => {
+    const res = mockRes();
+    await UserController.forgotPassword({ body }, res);
+
+    expect(res.statusCode).toBe(400);
+    expect(UserDao.findByEmail).not.toHaveBeenCalled();
+  });
+});
+
+describe("confirmPasswordReset (P4)", () => {
+  const token = "a".repeat(64);
+  const sha256 = (value) => crypto.createHash("sha256").update(value).digest("hex");
+
+  test("a valid token sets the new password and signs the player out everywhere", async () => {
+    UserDao.resetPasswordWithToken.mockImplementation(async (_hash, passwordHash) => storedUser({ passwordHash }));
+    const res = mockRes();
+
+    await UserController.confirmPasswordReset({ body: { token, newPassword: "brandnew1" } }, res);
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body.success).toBe(true);
+    const [tokenHash, passwordHash] = UserDao.resetPasswordWithToken.mock.calls[0];
+    expect(tokenHash).toBe(sha256(token));
+    expect(PasswordUtil.verify("brandnew1", passwordHash)).toBe(true);
+    expect(AuthSession.revokeUser).toHaveBeenCalledWith(storedUser()._id);
+  });
+
+  test("an expired, used or unknown token is rejected", async () => {
+    const res = mockRes();
+    await UserController.confirmPasswordReset({ body: { token, newPassword: "brandnew1" } }, res);
+
+    expect(res.statusCode).toBe(400);
+    expect(res.body.error).toMatch(/invalid or has expired/);
+    expect(AuthSession.revokeUser).not.toHaveBeenCalled();
   });
 
   test.each([
-    ["a missing username", { username: undefined }],
-    ["an invalid email", { email: "nope" }],
-  ])("rejects %s with 400", async (_label, override) => {
+    ["a missing token", { newPassword: "brandnew1" }],
+    ["a malformed token", { token: "not-a-token", newPassword: "brandnew1" }],
+    ["a short password", { token, newPassword: "short" }],
+  ])("rejects %s with 400 before touching the database", async (_label, body) => {
     const res = mockRes();
-    await UserController.forgotPassword({ body: { ...validBody, ...override } }, res);
+    await UserController.confirmPasswordReset({ body }, res);
 
     expect(res.statusCode).toBe(400);
-    expect(UserDao.findByUsernameAndEmail).not.toHaveBeenCalled();
+    expect(UserDao.resetPasswordWithToken).not.toHaveBeenCalled();
   });
 });
 

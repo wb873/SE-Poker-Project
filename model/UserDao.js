@@ -16,6 +16,10 @@ const userSchema = new mongoose.Schema(
     // Set when an admin picks a temporary password (P4); the player is offered
     // a change at each login until they choose their own
     mustChangePassword: { type: Boolean, default: false },
+    // Emailed password reset link (P4). Only a SHA-256 of the token is stored,
+    // so a leaked database can't be used to reset passwords
+    resetTokenHash: { type: String, default: null },
+    resetTokenExpires: { type: Date, default: null },
     recordedStatsResults: { type: [String], default: [] },
     stats: {
       handsPlayed: { type: Number, default: 0 },
@@ -81,6 +85,23 @@ exports.updatePassword = (id, passwordHash, temporary = false) => {
   return User.findByIdAndUpdate(
     id,
     { passwordHash, mustChangePassword: temporary },
+    { returnDocument: "after" }
+  );
+};
+
+// Saves a new reset token, replacing any earlier one so only the newest link works (P4)
+exports.setResetToken = (id, tokenHash, expires) => {
+  if (!mongoose.isValidObjectId(id)) return Promise.resolve(null);
+  return User.findByIdAndUpdate(id, { resetTokenHash: tokenHash, resetTokenExpires: expires });
+};
+
+// Sets the new password if the token matches and hasn't expired, and clears the
+// token in the same update so a link can't be used twice. Returns null otherwise (P4)
+exports.resetPasswordWithToken = (tokenHash, passwordHash) => {
+  if (typeof tokenHash !== "string" || !tokenHash) return Promise.resolve(null);
+  return User.findOneAndUpdate(
+    { resetTokenHash: tokenHash, resetTokenExpires: { $gt: new Date() } },
+    { passwordHash, mustChangePassword: false, resetTokenHash: null, resetTokenExpires: null },
     { returnDocument: "after" }
   );
 };

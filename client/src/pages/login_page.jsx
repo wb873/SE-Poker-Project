@@ -99,12 +99,10 @@ export default function LoginPage() {
   }
 
   async function submit_forgot() {
-    if (!username.trim()) return set_message("Please enter your username.");
     if (!email.trim()) return set_message("Please enter your email.");
 
-    const data = await post_json("/api/auth/forgot-password", { username: username.trim(), email: email.trim() });
-    set_identifier(username.trim());
-    switch_mode("login", `${data.message} Log in with it, then you can choose a new password.`);
+    const data = await post_json("/api/auth/forgot-password", { email: email.trim() });
+    switch_mode("login", data.message);
   }
 
   async function submit_change_password() {
@@ -147,7 +145,8 @@ export default function LoginPage() {
   const title = { login: "Log In", register: "Create Account", forgot: "Forgot Password", change_password: "Choose a New Password", admin: "Admin Log In" }[mode];
   const submit_label = busy ? "Please wait..." : { forgot: "Send", change_password: "Save Password" }[mode] || title;
   const uses_identifier = mode === "login" || mode === "admin";
-  const asks_username_email = mode === "register" || mode === "forgot";
+  const asks_username = mode === "register";
+  const asks_email = mode === "register" || mode === "forgot";
   const asks_new_password = mode === "register" || mode === "change_password";
 
   return (
@@ -159,7 +158,7 @@ export default function LoginPage() {
       <form className="login_form" onSubmit={handle_submit}>
         <h2 style={{ textAlign: "center" }}>{title}</h2>
         {mode === "admin" && <p className="muted">Sign in using your administrator account.</p>}
-        {mode === "forgot" && <p className="muted">Enter your username and email. An admin will set a temporary password and email it to you.</p>}
+        {mode === "forgot" && <p className="muted">Enter your account's email and we'll send you a link to choose a new password.</p>}
         {info && <div className="panel" role="status">{info}</div>}
 
         {uses_identifier && (
@@ -171,7 +170,7 @@ export default function LoginPage() {
             onChange={(e) => set_identifier(e.target.value)}
           />
         )}
-        {asks_username_email && (
+        {asks_username && (
           <>
             <input
               className="input"
@@ -182,6 +181,10 @@ export default function LoginPage() {
               onBlur={(e) => check_available("username", e.target.value)}
             />
             {taken.username && <div className="error_text">{taken.username}</div>}
+          </>
+        )}
+        {asks_email && (
+          <>
             <input
               className="input"
               type="email"

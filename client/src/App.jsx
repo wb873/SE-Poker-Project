@@ -3,6 +3,7 @@ import React from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
 import { use_session } from "./session.jsx";
 import LoginPage from "./pages/login_page.jsx";
+import ResetPasswordPage from "./pages/reset_password_page.jsx";
 import MainMenuPage from "./pages/main_menu_page.jsx";
 import LobbyBrowserPage from "./pages/lobby_browser_page.jsx";
 import CreateLobbyPage from "./pages/create_lobby_page.jsx";
@@ -41,6 +42,7 @@ export default function App() {
     <>
       <Routes>
         <Route path="/" element={<LoginPage />} />
+        <Route path="/reset-password" element={<ResetPasswordPage />} />
         <Route path="/admin" element={<RequireAdmin><AdminPage /></RequireAdmin>} />
         <Route path="/contact" element={<RequireRegistered><ContactPage /></RequireRegistered>} />
         <Route path="/menu" element={<RequireSession><MainMenuPage /></RequireSession>} />

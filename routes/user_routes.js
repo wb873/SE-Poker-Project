@@ -11,7 +11,8 @@ router.get("/availability", UserController.checkAvailability); // P1
 router.post("/login", UserController.login);                 // P2
 router.post("/logout", UserController.logout);               // P3
 router.post("/reset-password", UserController.resetPassword); // P4
-router.post("/forgot-password", UserController.forgotPassword); // P4
+router.post("/forgot-password", UserController.forgotPassword); // P4, emails a reset link
+router.post("/reset-password/confirm", UserController.confirmPasswordReset); // P4, from the emailed link
 router.post("/change-password", AuthSession.requireUser, UserController.changePassword); // P4
 router.get("/me", AuthSession.requireUser, UserController.getMe);
 router.put("/avatar", AuthSession.requireUser, UserController.updateAvatar); // P10

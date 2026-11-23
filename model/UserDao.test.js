@@ -246,3 +246,27 @@ dbTest("applyHandResult doesn't overwrite chips added at the same moment", async
   ]);
   expect((await UserDao.findById(created._id)).balance).toBe(1490);
 });
+
+dbTest("resetPasswordWithToken sets the password once, then the token stops working (P4)", async () => {
+  const created = await UserDao.create(userData({ mustChangePassword: true }));
+  await UserDao.setResetToken(created._id, "tokenhash", new Date(Date.now() + 60_000));
+
+  const updated = await UserDao.resetPasswordWithToken("tokenhash", "salt:newhash");
+  expect(updated.passwordHash).toBe("salt:newhash");
+  expect(updated.mustChangePassword).toBe(false);
+  expect(updated.resetTokenHash).toBeNull();
+
+  expect(await UserDao.resetPasswordWithToken("tokenhash", "salt:again")).toBeNull();
+  expect((await UserDao.findById(created._id)).passwordHash).toBe("salt:newhash");
+});
+
+dbTest("resetPasswordWithToken rejects an expired or replaced token (P4)", async () => {
+  const created = await UserDao.create(userData());
+  await UserDao.setResetToken(created._id, "old", new Date(Date.now() - 1000));
+  expect(await UserDao.resetPasswordWithToken("old", "salt:x")).toBeNull();
+
+  await UserDao.setResetToken(created._id, "first", new Date(Date.now() + 60_000));
+  await UserDao.setResetToken(created._id, "second", new Date(Date.now() + 60_000));
+  expect(await UserDao.resetPasswordWithToken("first", "salt:x")).toBeNull();
+  expect(await UserDao.resetPasswordWithToken("second", "salt:y")).not.toBeNull();
+});

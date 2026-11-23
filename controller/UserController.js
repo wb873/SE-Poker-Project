@@ -1,5 +1,6 @@
+const crypto = require("crypto");
 const UserDao = require("../model/UserDao");
-const ContactDao = require("../model/ContactDao");
+const Mailer = require("../util/Mailer");
 const PasswordUtil = require("../util/PasswordUtil");
 const AuthSession = require('../util/AuthSession');
 
@@ -154,33 +155,56 @@ exports.resetPassword = async function (req, res) {
 };
 
 // POST /api/auth/forgot-password  (P4)
-// Puts a reset request in the admin inbox. The admin sets a temporary password
-// and emails it to the player themselves.
-exports.forgotPassword = async function (req, res) {
-  const body = req.body ?? {};
-  const { username, email } = body;
+// Emails the player a one-time link to choose a new password. The reply is the
+// same whether or not the email has an account, so this can't be used to find
+// out who is registered.
+const RESET_LINK_MINUTES = 30;
+const FORGOT_REPLY = "If an account uses that email, we've sent it a link to reset the password. The link expires in 30 minutes.";
+const hashResetToken = (token) => crypto.createHash("sha256").update(token).digest("hex");
 
-  if (typeof username !== "string" || !username.trim())
-    return res.status(400).json({ success: false, error: "Your username is required." });
+exports.forgotPassword = async function (req, res) {
+  const { email } = req.body ?? {};
   if (typeof email !== "string" || !EMAIL_PATTERN.test(email.trim()))
     return res.status(400).json({ success: false, error: "A valid email address is required." });
 
   try {
-    const user = await UserDao.findByUsernameAndEmail(username, email);
-    if (!user) {
-      return res.status(404).json({ success: false, error: "No account matches that username and email." });
+    const user = await UserDao.findByEmail(email);
+    if (user && !user.isBanned) {
+      const token = crypto.randomBytes(32).toString("hex");
+      await UserDao.setResetToken(user._id, hashResetToken(token), new Date(Date.now() + RESET_LINK_MINUTES * 60 * 1000));
+      // The client uses a HashRouter, so its pages live after "#/"
+      const link = `${Mailer.appUrl()}/#/reset-password?token=${token}`;
+      try {
+        await Mailer.sendPasswordReset(user, link, RESET_LINK_MINUTES);
+      } catch (err) {
+        // Not reported to the client: a different reply would show the account exists
+        console.error("[forgotPassword] Could not send the reset email:", err.message);
+      }
     }
-
-    await ContactDao.create({
-      userId: user._id,
-      name: user.username,
-      email: user.email,
-      subject: "Password reset request",
-      message: `${user.username} (${user.email}) requested a password reset.`,
-    });
-    res.json({ success: true, message: "Your request has been sent to an admin. They will email you a temporary password." });
+    res.json({ success: true, message: FORGOT_REPLY });
   } catch (err) {
-    res.status(500).json({ success: false, error: "Could not send the reset request." });
+    res.status(500).json({ success: false, error: "Could not start the password reset." });
+  }
+};
+
+// POST /api/auth/reset-password/confirm  (P4)
+// The page behind the emailed link sends the token with the new password.
+// Signs the player out everywhere, since someone else may have had the old password.
+exports.confirmPasswordReset = async function (req, res) {
+  const { token, newPassword } = req.body ?? {};
+  if (typeof token !== "string" || !/^[0-9a-f]{64}$/.test(token))
+    return res.status(400).json({ success: false, error: "This reset link is invalid or has expired." });
+
+  const passwordError = PasswordUtil.validate(newPassword);
+  if (passwordError) return res.status(400).json({ success: false, error: passwordError });
+
+  try {
+    const user = await UserDao.resetPasswordWithToken(hashResetToken(token), PasswordUtil.hash(newPassword));
+    if (!user) return res.status(400).json({ success: false, error: "This reset link is invalid or has expired." });
+    AuthSession.revokeUser(user._id);
+    res.json({ success: true, message: "Your password has been changed. You can log in with it now." });
+  } catch (err) {
+    res.status(500).json({ success: false, error: "Could not reset the password." });
   }
 };
 

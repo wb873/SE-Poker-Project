@@ -124,9 +124,8 @@ export default function LobbyBrowserPage() {
               <div className="muted" style={{ fontSize: 13 }}>Players: {lobby.players.join(", ")}</div>
             </div>
             <span className="spacer" />
-            {is_full(lobby) ? (
-              <button className="btn small" onClick={() => navigate(`/table/${lobby.id}?spectate=1`)}>Spectate</button>
-            ) : (
+            <button className="btn small" onClick={() => navigate(`/table/${lobby.id}?spectate=1`)}>Spectate</button>
+            {!is_full(lobby) && (
               <button className="btn small primary" disabled={joining_id !== null} onClick={() => handle_join(lobby.id)}>
                 {joining_id === lobby.id ? "Joining..." : "Join"}
               </button>
